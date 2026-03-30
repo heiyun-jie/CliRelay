@@ -1,0 +1,124 @@
+import { createPortal } from "react-dom";
+import { useEffect, useRef, useState, type PropsWithChildren, type ReactNode } from "react";
+import { X } from "lucide-react";
+
+const ANIMATION_MS = 180;
+
+export function Modal({
+  open,
+  title,
+  description,
+  footer,
+  maxWidth = "max-w-3xl",
+  onClose,
+  children,
+}: PropsWithChildren<{
+  open: boolean;
+  title: string;
+  description?: string;
+  footer?: ReactNode;
+  maxWidth?: string;
+  onClose: () => void;
+}>) {
+  const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(open);
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      setMounted(true);
+      const raf = window.requestAnimationFrame(() => setVisible(true));
+      return () => window.cancelAnimationFrame(raf);
+    }
+
+    setVisible(false);
+    if (timeoutRef.current) {
+      window.clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = window.setTimeout(() => {
+      setMounted(false);
+      timeoutRef.current = null;
+    }, ANIMATION_MS);
+
+    return () => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, open]);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <button
+        type="button"
+        onClick={() => {
+          if (!open) return;
+          onClose();
+        }}
+        aria-label="关闭弹窗"
+        className={[
+          "absolute inset-0 cursor-default bg-slate-900/40 backdrop-blur-sm dark:bg-black/50",
+          "transition-opacity duration-200 ease-out motion-reduce:transition-none",
+          visible ? "opacity-100" : "opacity-0",
+        ].join(" ")}
+      />
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={[
+          `relative z-10 w-full ${maxWidth} overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-neutral-800 dark:bg-neutral-950`,
+          "transition-all duration-200 ease-out motion-reduce:transition-none",
+          visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-2 scale-95",
+        ].join(" ")}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-neutral-800">
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-white">
+              {title}
+            </h2>
+            {description ? (
+              <p className="mt-1 text-sm text-slate-600 dark:text-white/65">{description}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={!open}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white/70 text-slate-700 shadow-sm transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/35 disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-950/60 dark:text-slate-200 dark:hover:bg-neutral-950/80 dark:focus-visible:ring-white/15"
+            aria-label="关闭"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="max-h-[70vh] overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
+
+        {footer ? (
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-neutral-800">
+            {footer}
+          </div>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
+  );
+}

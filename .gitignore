@@ -1,0 +1,60 @@
+# Binaries
+cli-proxy-api
+*.exe
+
+# Configuration
+config.yaml
+config.local-dev.yaml
+config.yaml.pre-sqlite-migration
+.env
+
+# Generated content
+bin/*
+logs/*
+conv/*
+temp/*
+refs/*
+data/*
+dist-panel/*
+usage.db
+usage.db-*
+clirelay.exe~
+nul
+
+# Storage backends
+pgstore/*
+gitstore/*
+objectstore/*
+
+# Static assets
+static/*
+
+# Authentication data
+auths/*
+!auths/.gitkeep
+
+# Documentation
+docs/*
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+
+# Tooling metadata
+.vscode/*
+.codex/*
+.claude/*
+.gemini/*
+.serena/*
+.tmp-go/*
+.agent/*
+.agents/*
+.agents/*
+.agentflow/*
+.opencode/*
+.bmad/*
+_bmad/*
+_bmad-output/*
+
+# macOS
+.DS_Store
+._*

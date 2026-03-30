@@ -1,0 +1,16 @@
+.agents
+.helloagents
+node_modules
+dist
+*.local
+.DS_Store
+.idea
+.vscode
+coverage
+bun.lockb
+.omx/
+test-results/
+playwright-report/
+.sisyphus/
+vite-dev.stderr.log
+vite-dev.stdout.log

@@ -1,0 +1,77 @@
+name: Deploy CliRelay
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+
+      - name: Build linux/amd64 binary
+        env:
+          BUILD_TIME: ${{ github.event.head_commit.timestamp }}
+        run: |
+          # Use commit timestamp if available, otherwise current time
+          if [ -n "$BUILD_TIME" ]; then
+            BUILD_DATE="$BUILD_TIME"
+          else
+            BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          fi
+          echo "Build date: $BUILD_DATE"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -ldflags="-s -w \
+              -X 'github.com/router-for-me/CLIProxyAPI/v6/internal/buildinfo.Version=${{ github.ref_name }}' \
+              -X 'github.com/router-for-me/CLIProxyAPI/v6/internal/buildinfo.Commit=${{ github.sha }}' \
+              -X 'github.com/router-for-me/CLIProxyAPI/v6/internal/buildinfo.BuildDate=${BUILD_DATE}'" \
+            -o cli-proxy-api-new ./cmd/server/
+
+      - name: Upload binary (as temp name)
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "cli-proxy-api-new"
+          target: "/root/cliproxy/"
+          overwrite: true
+
+      - name: Stop, swap, and restart
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /root/cliproxy
+            # Stop via systemd
+            systemctl stop cliproxy 2>/dev/null || true
+            sleep 1
+            # Kill any stray processes (use pgrep for exact match, avoid killing ourselves)
+            PIDS=$(pgrep -x cli-proxy-api 2>/dev/null) || true
+            if [ -n "$PIDS" ]; then
+              kill $PIDS 2>/dev/null || true
+              sleep 2
+            fi
+            # Backup current binary
+            if [ -f cli-proxy-api ]; then
+              cp cli-proxy-api "cli-proxy-api.bak.$(date +%Y%m%d_%H%M%S)"
+            fi
+            # Swap in new binary
+            mv cli-proxy-api-new cli-proxy-api
+            chmod +x cli-proxy-api
+            # Clean up old backups, keep last 3
+            ls -1t cli-proxy-api.bak.* 2>/dev/null | tail -n +4 | xargs -r rm -f
+            # Start service
+            systemctl start cliproxy
+            sleep 3
+            systemctl is-active cliproxy
