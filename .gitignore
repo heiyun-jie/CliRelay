@@ -35,6 +35,7 @@ auths/*
 
 # Documentation
 docs/*
+!docs/project-status_CN.md
 AGENTS.md
 CLAUDE.md
 GEMINI.md

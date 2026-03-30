@@ -22,6 +22,11 @@
   <a href="https://github.com/kittors/CliRelay/pulls">✨ Request Feature</a>
 </p>
 
+## Project Status Docs
+
+- Chinese project status: [docs/project-status_CN.md](docs/project-status_CN.md)
+- Gateway handoff/task summary: [SCE_GATEWAY_TASKS.md](SCE_GATEWAY_TASKS.md)
+
 ---
 
 ## ⚡ What is CliRelay?
