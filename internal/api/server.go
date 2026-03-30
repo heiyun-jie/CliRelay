@@ -1127,9 +1127,18 @@ func (s *Server) Stop(ctx context.Context) error {
 	if err := s.server.Shutdown(ctx); err != nil {
 		return fmt.Errorf("failed to shutdown HTTP server: %v", err)
 	}
+	s.closeSCEEngine()
 
 	log.Debug("API server stopped")
 	return nil
+}
+
+func (s *Server) closeSCEEngine() {
+	if s == nil || s.sceEngine == nil {
+		return
+	}
+	s.sceEngine.Close()
+	s.sceEngine = nil
 }
 
 // corsMiddleware returns a Gin middleware handler that adds CORS headers

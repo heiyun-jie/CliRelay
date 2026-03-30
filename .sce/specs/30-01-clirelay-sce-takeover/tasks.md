@@ -14,5 +14,5 @@
 - [x] 建立 `.sce/memory/README.md`
 - [x] 建立 `.sce/runtime/README.md`
 - [x] 按 Spec 推进 `BodyCacheMiddleware`
-- [ ] 下一步补 `sce.Engine` shutdown 释放
+- [x] 补 `sce.Engine` shutdown 释放
 - [ ] 下一步评估 SCE 查询优化方案

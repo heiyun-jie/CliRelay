@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	gin "github.com/gin-gonic/gin"
 	proxyconfig "github.com/router-for-me/CLIProxyAPI/v6/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/sce"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v6/sdk/access"
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
@@ -107,5 +109,17 @@ func TestAmpProviderModelRoutes(t *testing.T) {
 				t.Fatalf("response body for %s missing %q: %s", tc.path, tc.wantContains, body)
 			}
 		})
+	}
+}
+
+func TestServerStopReleasesSCEEngine(t *testing.T) {
+	server := newTestServer(t)
+	server.sceEngine = &sce.Engine{}
+
+	if err := server.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if server.sceEngine != nil {
+		t.Fatal("expected sceEngine to be released on Stop()")
 	}
 }
