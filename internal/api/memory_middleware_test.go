@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	apiMiddleware "github.com/router-for-me/CLIProxyAPI/v6/internal/api/middleware"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/usage"
 	"github.com/tidwall/gjson"
@@ -44,6 +45,7 @@ func TestMemoryHydrationMiddlewareInjectsMemoryAndRecordsTurn(t *testing.T) {
 		c.Set("apiKey", "sk-test")
 		c.Next()
 	})
+	router.Use(apiMiddleware.BodyCacheMiddleware(64 << 10))
 	router.Use(MemoryHydrationMiddleware(nil))
 	router.POST("/v1/chat/completions", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -116,6 +118,7 @@ func TestMemoryHydrationMiddlewareRecordsLatestUserTurnOnly(t *testing.T) {
 		c.Set("apiKey", "sk-test")
 		c.Next()
 	})
+	router.Use(apiMiddleware.BodyCacheMiddleware(64 << 10))
 	router.Use(MemoryHydrationMiddleware(nil))
 	router.POST("/v1/chat/completions", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -177,6 +180,7 @@ func TestMemoryHydrationMiddlewareIgnoresFunctionCallOutputAsLatestUserTurn(t *t
 		c.Set("apiKey", "sk-test")
 		c.Next()
 	})
+	router.Use(apiMiddleware.BodyCacheMiddleware(64 << 10))
 	router.Use(MemoryHydrationMiddleware(nil))
 	router.POST("/v1/responses", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{

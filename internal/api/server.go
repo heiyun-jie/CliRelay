@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,9 +30,9 @@ import (
 	ampmodule "github.com/router-for-me/CLIProxyAPI/v6/internal/api/modules/amp"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/buildinfo"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/sce"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/managementasset"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/sce"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/usage"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/util"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v6/sdk/access"
@@ -355,6 +354,7 @@ func (s *Server) setupRoutes() {
 	v1 := s.engine.Group("/v1")
 	v1.Use(AuthMiddleware(s.accessManager))
 	v1.Use(middleware.QuotaMiddleware())
+	v1.Use(middleware.BodyCacheMiddleware(bodyutil.DefaultRequestBodyLimit))
 	v1.Use(ModelRestrictionMiddleware())
 	v1.Use(SystemPromptMiddleware())
 	intentMw := IntentUpgradeMiddleware(s.cfg.IntentUpgrade, s.cfg.Port, s.sceEngine)
@@ -1412,7 +1412,7 @@ func ModelRestrictionMiddleware() gin.HandlerFunc {
 		}
 
 		// Read the body to extract the model field
-		bodyBytes, err := bodyutil.ReadRequestBody(c, bodyutil.DefaultRequestBodyLimit)
+		bodyBytes, err := bodyutil.GetOrReadRequestBody(c, bodyutil.DefaultRequestBodyLimit)
 		if err != nil {
 			if bodyutil.IsTooLarge(err) {
 				c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
@@ -1476,7 +1476,7 @@ func SystemPromptMiddleware() gin.HandlerFunc {
 		}
 
 		// Read body
-		bodyBytes, err := bodyutil.ReadRequestBody(c, bodyutil.DefaultRequestBodyLimit)
+		bodyBytes, err := bodyutil.GetOrReadRequestBody(c, bodyutil.DefaultRequestBodyLimit)
 		if err != nil {
 			if bodyutil.IsTooLarge(err) {
 				c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
@@ -1497,7 +1497,6 @@ func SystemPromptMiddleware() gin.HandlerFunc {
 			}
 			var body map[string]interface{}
 			if err := json.Unmarshal(bodyBytes, &body); err != nil {
-				c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 				c.Next()
 				return
 			}
@@ -1508,7 +1507,6 @@ func SystemPromptMiddleware() gin.HandlerFunc {
 			body["messages"] = newMessages
 			newBody, err = json.Marshal(body)
 			if err != nil {
-				c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 				c.Next()
 				return
 			}
@@ -1525,21 +1523,17 @@ func SystemPromptMiddleware() gin.HandlerFunc {
 			}
 			newBody, _ = sjson.SetBytes(bodyBytes, "instructions", combined)
 			if newBody == nil {
-				c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 				c.Next()
 				return
 			}
 			log.Debugf("[SystemPrompt] injected into instructions (Responses API)")
 
 		} else {
-			// Unknown format — pass through
-			c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			c.Next()
 			return
 		}
 
-		c.Request.Body = io.NopCloser(bytes.NewReader(newBody))
-		c.Request.ContentLength = int64(len(newBody))
+		bodyutil.SetCachedRequestBody(c, newBody)
 		c.Next()
 	}
 }

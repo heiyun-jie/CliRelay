@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/api/bodyutil"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/sce"
@@ -57,7 +57,7 @@ func MemoryHydrationMiddleware(sceEngine *sce.Engine) gin.HandlerFunc {
 			return
 		}
 
-		bodyBytes, err := bodyutil.ReadRequestBody(c, bodyutil.DefaultRequestBodyLimit)
+		bodyBytes, err := bodyutil.GetOrReadRequestBody(c, bodyutil.DefaultRequestBodyLimit)
 		if err != nil {
 			if bodyutil.IsTooLarge(err) {
 				c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
@@ -102,8 +102,7 @@ func MemoryHydrationMiddleware(sceEngine *sce.Engine) gin.HandlerFunc {
 			newBody, changed := injectMemoryIntoBody(bodyBytes, injectedText)
 			if changed {
 				bodyBytes = newBody
-				c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-				c.Request.ContentLength = int64(len(bodyBytes))
+				bodyutil.SetCachedRequestBody(c, bodyBytes)
 				for _, entry := range memories {
 					matchReason := "always_apply"
 					if !entry.AlwaysApply {
@@ -114,9 +113,6 @@ func MemoryHydrationMiddleware(sceEngine *sce.Engine) gin.HandlerFunc {
 					}
 				}
 			}
-		} else {
-			c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-			c.Request.ContentLength = int64(len(bodyBytes))
 		}
 
 		c.Next()

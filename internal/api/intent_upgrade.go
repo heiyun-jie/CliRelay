@@ -102,9 +102,12 @@ func IntentUpgradeMiddleware(cfg config.IntentUpgradeConfig, localPort int, sceE
 			return
 		}
 
-		bodyBytes, err := bodyutil.ReadRequestBody(c, bodyutil.DefaultRequestBodyLimit)
+		bodyBytes, err := bodyutil.GetOrReadRequestBody(c, bodyutil.DefaultRequestBodyLimit)
 		if err != nil {
-			c.Request.Body = io.NopCloser(bytes.NewReader(nil))
+			if bodyutil.IsTooLarge(err) {
+				c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+				return
+			}
 			c.Next()
 			return
 		}
@@ -115,8 +118,6 @@ func IntentUpgradeMiddleware(cfg config.IntentUpgradeConfig, localPort int, sceE
 		apiKeyStr, _ := apiKey.(string)
 
 		if !shouldUpgrade(excludeSet, apiKeySet, apiKeyStr, model) {
-			c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-			c.Request.ContentLength = int64(len(bodyBytes))
 			c.Next()
 			return
 		}
@@ -126,8 +127,6 @@ func IntentUpgradeMiddleware(cfg config.IntentUpgradeConfig, localPort int, sceE
 		// Extract user prompt and any already-injected memory context.
 		userPrompt := extractLatestUserTurn(bodyBytes)
 		if userPrompt == "" {
-			c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-			c.Request.ContentLength = int64(len(bodyBytes))
 			c.Next()
 			return
 		}
@@ -145,8 +144,6 @@ func IntentUpgradeMiddleware(cfg config.IntentUpgradeConfig, localPort int, sceE
 		analysis, err := callIntentAnalysis(c, httpClient, localPort, cfg.Model, userPrompt, memoryContext, model)
 		if err != nil {
 			log.WithError(err).Warn("intent upgrade analysis call failed, proceeding without upgrade")
-			c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-			c.Request.ContentLength = int64(len(bodyBytes))
 			c.Next()
 			return
 		}
@@ -155,10 +152,9 @@ func IntentUpgradeMiddleware(cfg config.IntentUpgradeConfig, localPort int, sceE
 		newBody, changed := injectIntentAnalysis(bodyBytes, analysis)
 		if changed {
 			bodyBytes = newBody
+			bodyutil.SetCachedRequestBody(c, bodyBytes)
 		}
 
-		c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-		c.Request.ContentLength = int64(len(bodyBytes))
 		c.Next()
 
 		// Async feedback write-back to SCE.
