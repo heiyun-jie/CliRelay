@@ -31,12 +31,13 @@
 - `00-00-project-reference`
 - `30-01-clirelay-sce-takeover`
 - `30-02-v1-runtime-hot-reload`
+- `30-03-sce-query-optimization`
 
 ## 4. 当前优先问题
 
-1. `intent-upgrade` 配置需要和当前运行态严格对齐，不能继续依赖旧快照。
-2. SCE 查询策略仍偏全表扫描。
-3. 本地记忆和 SCE user memory 还没有统一治理边界。
+1. SCE 查询策略需要从全量读取进入候选筛选模式。
+2. 本地记忆和 SCE user memory 还没有统一治理边界。
+3. Intent Upgrade 仍需要质量约束，而不只是运行时热更新。
 
 ## 5. 当前默认执行顺序
 

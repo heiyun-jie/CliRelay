@@ -26,12 +26,12 @@ const (
 
 	userMemoryBaseScore = 90
 
-	symbolBaseline    = 2
-	symbolNameWeight  = 6
-	symbolSummWeight  = 3
-	symbolPathWeight  = 2
-	symbolKindWeight  = 1
-	symbolMinScore    = 2
+	symbolBaseline   = 2
+	symbolNameWeight = 6
+	symbolSummWeight = 3
+	symbolPathWeight = 2
+	symbolKindWeight = 1
+	symbolMinScore   = 2
 
 	codeFileSummWeight = 3
 	codeFilePathWeight = 2
@@ -40,6 +40,12 @@ const (
 	memTitleAreaWeight = 5
 	memPathWeight      = 3
 	memTagsWeight      = 2
+
+	tokenFilterLimit            = 12
+	userMemoryCandidateFloor    = 48
+	symbolCandidateFloor        = 96
+	codeFileCandidateFloor      = 64
+	userMemoryAppliedMultiplier = 4
 )
 
 // Engine embeds the SCE query logic in-process, reading the yangzhou runtime.db directly.
@@ -49,9 +55,9 @@ type Engine struct {
 	maxResults int
 	scoreFloor int
 
-	mu            sync.RWMutex
-	cachedIndex   *memoryIndex
-	indexModTime  time.Time
+	mu           sync.RWMutex
+	cachedIndex  *memoryIndex
+	indexModTime time.Time
 }
 
 // NewEngine opens the SCE runtime.db and prepares the query engine.
@@ -116,9 +122,9 @@ func (e *Engine) HydrateContext(query string, top int) (*HydrateResult, error) {
 	if len(tokens) > 0 {
 		_ = e.loadMemoryIndex() // refresh if stale
 		hits = append(hits, e.memoryHits(tokens)...)
-		hits = append(hits, e.userMemoryHits(tokens)...)
-		hits = append(hits, e.symbolHits(tokens)...)
-		hits = append(hits, e.codeHits(tokens)...)
+		hits = append(hits, e.userMemoryHits(tokens, top)...)
+		hits = append(hits, e.symbolHits(tokens, top)...)
+		hits = append(hits, e.codeHits(tokens, top)...)
 		hits = selectTopHits(hits, top)
 	}
 
@@ -346,11 +352,8 @@ func (e *Engine) memoryHits(tokens []string) []Hit {
 	return hits
 }
 
-func (e *Engine) userMemoryHits(tokens []string) []Hit {
-	rows, err := e.db.Query(
-		`SELECT id, scope, memory_kind, content, source, tags_json, confidence, updated_at
-		 FROM user_memory WHERE active = 1 ORDER BY updated_at DESC, id DESC`,
-	)
+func (e *Engine) userMemoryHits(tokens []string, top int) []Hit {
+	rows, err := e.queryUserMemoryRows(tokens, candidateLimit(top, userMemoryCandidateFloor))
 	if err != nil {
 		log.WithError(err).Warn("sce: user memory query failed")
 		return nil
@@ -359,19 +362,18 @@ func (e *Engine) userMemoryHits(tokens []string) []Hit {
 
 	var hits []Hit
 	for rows.Next() {
-		var id int64
-		var scope, kind, content, source, tagsRaw, confidence, updatedAt string
-		if err := rows.Scan(&id, &scope, &kind, &content, &source, &tagsRaw, &confidence, &updatedAt); err != nil {
+		row, err := scanUserMemoryRow(rows)
+		if err != nil {
 			continue
 		}
 		var tags []string
-		_ = json.Unmarshal([]byte(tagsRaw), &tags)
+		_ = json.Unmarshal([]byte(row.tagsRaw), &tags)
 
 		haystack := strings.Join([]string{
-			strings.ToLower(content),
-			strings.ToLower(kind),
-			strings.ToLower(scope),
-			strings.ToLower(source),
+			strings.ToLower(row.content),
+			strings.ToLower(row.kind),
+			strings.ToLower(row.scope),
+			strings.ToLower(row.source),
 			strings.ToLower(strings.Join(tags, " ")),
 		}, " ")
 
@@ -391,25 +393,23 @@ func (e *Engine) userMemoryHits(tokens []string) []Hit {
 		}
 		score := userMemoryBaseScore + bonus
 
-		title := content
+		title := row.content
 		if len([]rune(title)) > 56 {
 			title = string([]rune(title)[:53]) + "..."
 		}
 
 		hits = append(hits, Hit{
-			Kind:  "user-memory:" + kind,
+			Kind:  "user-memory:" + row.kind,
 			Score: score,
 			Title: title,
-			Path:  fmt.Sprintf("runtime:user_memory#%d", id),
+			Path:  fmt.Sprintf("runtime:user_memory#%d", row.id),
 		})
 	}
 	return hits
 }
 
-func (e *Engine) symbolHits(tokens []string) []Hit {
-	rows, err := e.db.Query(
-		`SELECT file_path, symbol_kind, symbol_name, symbol_path, line_no, summary, tags_json FROM symbol_index`,
-	)
+func (e *Engine) symbolHits(tokens []string, top int) []Hit {
+	rows, err := e.querySymbolRows(tokens, candidateLimit(top, symbolCandidateFloor))
 	if err != nil {
 		log.WithError(err).Warn("sce: symbol query failed")
 		return nil
@@ -446,8 +446,8 @@ func (e *Engine) symbolHits(tokens []string) []Hit {
 	return hits
 }
 
-func (e *Engine) codeHits(tokens []string) []Hit {
-	rows, err := e.db.Query(`SELECT path, summary, tags_json FROM file_index`)
+func (e *Engine) codeHits(tokens []string, top int) []Hit {
+	rows, err := e.queryFileRows(tokens, candidateLimit(top, codeFileCandidateFloor))
 	if err != nil {
 		log.WithError(err).Warn("sce: file index query failed")
 		return nil
@@ -525,30 +525,16 @@ func selectTopHits(hits []Hit, topN int) []Hit {
 }
 
 func (e *Engine) buildAppliedUserMemory(tokens []string, limit, fallback int) []UserMemoryItem {
-	rows, err := e.db.Query(
-		`SELECT id, scope, memory_kind, content, source, tags_json, confidence, updated_at
-		 FROM user_memory WHERE active = 1 ORDER BY updated_at DESC, id DESC LIMIT ?`,
-		limit,
-	)
+	rows, err := e.queryUserMemoryRows(tokens, candidateLimit(limit*userMemoryAppliedMultiplier, userMemoryCandidateFloor))
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 
-	type rawRow struct {
-		id         int64
-		scope      string
-		kind       string
-		content    string
-		source     string
-		tagsRaw    string
-		confidence string
-		updatedAt  string
-	}
 	var allRows []rawRow
 	for rows.Next() {
-		var r rawRow
-		if err := rows.Scan(&r.id, &r.scope, &r.kind, &r.content, &r.source, &r.tagsRaw, &r.confidence, &r.updatedAt); err != nil {
+		r, err := scanUserMemoryRow(rows)
+		if err != nil {
 			continue
 		}
 		allRows = append(allRows, r)
@@ -596,7 +582,147 @@ func (e *Engine) buildAppliedUserMemory(tokens []string, limit, fallback int) []
 	if len(items) > limit {
 		items = items[:limit]
 	}
+	if len(items) == 0 && fallback > 0 {
+		return e.recentAppliedUserMemory(limit, fallback)
+	}
 	return items
+}
+
+type rawRow struct {
+	id         int64
+	scope      string
+	kind       string
+	content    string
+	source     string
+	tagsRaw    string
+	confidence string
+	updatedAt  string
+}
+
+func (e *Engine) recentAppliedUserMemory(limit, fallback int) []UserMemoryItem {
+	rows, err := e.db.Query(
+		`SELECT id, scope, memory_kind, content, source, tags_json, confidence, updated_at
+		 FROM user_memory WHERE active = 1 ORDER BY updated_at DESC, id DESC LIMIT ?`,
+		fallback,
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	items := make([]UserMemoryItem, 0, fallback)
+	for rows.Next() {
+		r, err := scanUserMemoryRow(rows)
+		if err != nil {
+			continue
+		}
+		var tags []string
+		_ = json.Unmarshal([]byte(r.tagsRaw), &tags)
+		items = append(items, UserMemoryItem{
+			ID: r.id, Scope: r.scope, Kind: r.kind, Content: r.content,
+			Source: r.source, Confidence: r.confidence, UpdatedAt: r.updatedAt,
+			Tags: tags, Matched: 0,
+		})
+		if len(items) >= limit {
+			break
+		}
+	}
+	return items
+}
+
+func (e *Engine) queryUserMemoryRows(tokens []string, limit int) (*sql.Rows, error) {
+	filterExpr := `lower(coalesce(content,'') || ' ' || coalesce(memory_kind,'') || ' ' || coalesce(scope,'') || ' ' || coalesce(source,'') || ' ' || coalesce(tags_json,''))`
+	query := `SELECT id, scope, memory_kind, content, source, tags_json, confidence, updated_at FROM user_memory WHERE active = 1`
+	args := make([]any, 0, tokenFilterLimit+1)
+	if clause, clauseArgs := buildTokenFilterClause(filterExpr, tokens); clause != "" {
+		query += " AND " + clause
+		args = append(args, clauseArgs...)
+	}
+	query += " ORDER BY updated_at DESC, id DESC LIMIT ?"
+	args = append(args, limit)
+	return e.db.Query(query, args...)
+}
+
+func (e *Engine) querySymbolRows(tokens []string, limit int) (*sql.Rows, error) {
+	filterExpr := `lower(coalesce(symbol_name,'') || ' ' || coalesce(symbol_path,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(file_path,'') || ' ' || coalesce(symbol_kind,'') || ' ' || coalesce(tags_json,''))`
+	query := `SELECT file_path, symbol_kind, symbol_name, symbol_path, line_no, summary, tags_json FROM symbol_index`
+	args := make([]any, 0, tokenFilterLimit+1)
+	if clause, clauseArgs := buildTokenFilterClause(filterExpr, tokens); clause != "" {
+		query += " WHERE " + clause
+		args = append(args, clauseArgs...)
+	}
+	query += " LIMIT ?"
+	args = append(args, limit)
+	return e.db.Query(query, args...)
+}
+
+func (e *Engine) queryFileRows(tokens []string, limit int) (*sql.Rows, error) {
+	filterExpr := `lower(coalesce(path,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(tags_json,''))`
+	query := `SELECT path, summary, tags_json FROM file_index`
+	args := make([]any, 0, tokenFilterLimit+1)
+	if clause, clauseArgs := buildTokenFilterClause(filterExpr, tokens); clause != "" {
+		query += " WHERE " + clause
+		args = append(args, clauseArgs...)
+	}
+	query += " LIMIT ?"
+	args = append(args, limit)
+	return e.db.Query(query, args...)
+}
+
+func buildTokenFilterClause(expr string, tokens []string) (string, []any) {
+	filtered := clampTokens(tokens, tokenFilterLimit)
+	if len(filtered) == 0 {
+		return "", nil
+	}
+	parts := make([]string, 0, len(filtered))
+	args := make([]any, 0, len(filtered))
+	for _, tok := range filtered {
+		parts = append(parts, "instr("+expr+", ?) > 0")
+		args = append(args, tok)
+	}
+	return "(" + strings.Join(parts, " OR ") + ")", args
+}
+
+func clampTokens(tokens []string, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(tokens))
+	filtered := make([]string, 0, limit)
+	for _, tok := range tokens {
+		tok = strings.TrimSpace(strings.ToLower(tok))
+		if tok == "" {
+			continue
+		}
+		if _, exists := seen[tok]; exists {
+			continue
+		}
+		seen[tok] = struct{}{}
+		filtered = append(filtered, tok)
+		if len(filtered) >= limit {
+			break
+		}
+	}
+	return filtered
+}
+
+func candidateLimit(top, floor int) int {
+	if top <= 0 {
+		top = 1
+	}
+	limit := top * 8
+	if limit < floor {
+		return floor
+	}
+	return limit
+}
+
+func scanUserMemoryRow(scanner interface {
+	Scan(dest ...any) error
+}) (rawRow, error) {
+	var r rawRow
+	err := scanner.Scan(&r.id, &r.scope, &r.kind, &r.content, &r.source, &r.tagsRaw, &r.confidence, &r.updatedAt)
+	return r, err
 }
 
 func uniqueSorted(ss []string) []string {

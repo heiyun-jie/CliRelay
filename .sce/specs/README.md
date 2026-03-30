@@ -39,3 +39,16 @@
 
 - `.sce/specs/30-02-v1-runtime-hot-reload/requirements.md`
 - `.sce/specs/30-02-v1-runtime-hot-reload/tasks.md`
+
+### `30-03-sce-query-optimization`
+
+用途：
+
+1. 收口 SCE 的全量候选读取问题
+2. 让查询进入 “SQL 粗筛 + Go 精排” 的第一阶段
+3. 为后续更深层索引优化保留稳定入口
+
+入口：
+
+- `.sce/specs/30-03-sce-query-optimization/requirements.md`
+- `.sce/specs/30-03-sce-query-optimization/tasks.md`

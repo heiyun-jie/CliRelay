@@ -15,4 +15,4 @@
 - [x] 建立 `.sce/runtime/README.md`
 - [x] 按 Spec 推进 `BodyCacheMiddleware`
 - [x] 补 `sce.Engine` shutdown 释放
-- [ ] 下一步评估 SCE 查询优化方案
+- [x] 评估 SCE 查询优化方案，并拆分为 `30-03-sce-query-optimization`
