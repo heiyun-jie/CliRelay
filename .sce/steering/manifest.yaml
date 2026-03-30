@@ -1,0 +1,15 @@
+schema_version: "1.0"
+engine: sce
+profile: default
+description: CliRelay SCE steering contract
+layers:
+  core_principles: CORE_PRINCIPLES.md
+  environment: ENVIRONMENT.md
+  current_context: CURRENT_CONTEXT.md
+  rules_guide: RULES_GUIDE.md
+compatibility:
+  codex: ">=0.0.0"
+  generic: "*"
+session:
+  root: .sce/sessions
+  default_status: active
