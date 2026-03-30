@@ -30,17 +30,16 @@
 
 - `00-00-project-reference`
 - `30-01-clirelay-sce-takeover`
+- `30-02-v1-runtime-hot-reload`
 
 ## 4. 当前优先问题
 
-1. 请求体在 `MemoryHydrationMiddleware` 与 `IntentUpgradeMiddleware` 间被重复读取。
-2. `sce.Engine` 生命周期没有明确关闭路径。
-3. SCE 查询策略仍偏全表扫描。
-4. 本地记忆和 SCE user memory 还没有统一治理边界。
+1. `intent-upgrade` 配置需要和当前运行态严格对齐，不能继续依赖旧快照。
+2. SCE 查询策略仍偏全表扫描。
+3. 本地记忆和 SCE user memory 还没有统一治理边界。
 
 ## 5. 当前默认执行顺序
 
 1. 任何新任务先查 `.sce/specs/README.md`
 2. 如果命中现有 Active Spec，按 Spec 做
 3. 如果不命中，先补 Spec，再做代码
-

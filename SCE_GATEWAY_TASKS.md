@@ -139,35 +139,29 @@
 
 以下问题是已经结合代码重新核对过的，不是历史猜测。
 
-### P0. 请求体被多次读取
+### P0. `/v1` 请求体重复读取问题已收口
 
-现状：
+当前状态：
 
-1. `MemoryHydrationMiddleware` 会读一次请求体。
-2. `IntentUpgradeMiddleware` 会再读一次请求体。
+1. `/v1` 已增加统一 `BodyCacheMiddleware`。
+2. `ModelRestrictionMiddleware`、`SystemPromptMiddleware`、`MemoryHydrationMiddleware`、`IntentUpgradeMiddleware` 已统一优先读取缓存 body。
+3. 中间件改写 body 后会回写缓存，供下游继续读取。
 
-风险：
+当前结论：
 
-1. 两个中间件对 body 的恢复顺序不稳定。
-2. 后续再加中间件时很容易出现空 body、覆盖 body、调试困难。
+1. 这一项已从“待修问题”变为“已完成稳定性收口”。
 
-建议：
+### P0. SCE Engine 生命周期已建立关闭路径
 
-1. 在 `/v1` 路由链前增加统一 `BodyCacheMiddleware`。
-2. 后续中间件统一从 context 读取缓存 body。
+当前状态：
 
-### P0. SCE Engine 没有明确关闭路径
+1. `Server.Stop()` 已在 HTTP server 关闭后显式释放当前 `sce.Engine`。
+2. `/v1` 链路已改成请求时动态读取当前 engine，不再固定捕获启动时实例。
+3. `SCEMemory` 配置更新后，会替换运行中的 engine，并释放旧连接。
 
-现状：
+当前结论：
 
-1. `internal/sce/engine.go` 有 `Close()`。
-2. 当前 `server.go` 初始化了 `sce.NewEngine(...)`。
-3. 但没有看到明确的统一 shutdown 时机去关闭它。
-
-风险：
-
-1. 优雅退出时 SQLite 连接释放不明确。
-2. 长期看不利于把 SCE 接成标准服务资源。
+1. 这一项已从“待修问题”变为“已完成生命周期收口”。
 
 ### P1. SCE 查询仍偏全表扫描
 
@@ -187,6 +181,7 @@
 
 1. 它会额外走一次本地 HTTP 回调分析意图。
 2. 还会异步把分析结果写回 SCE `user_memory`。
+3. 当前已支持对后续请求热更新 `intent-upgrade` 配置，不再固定使用启动快照。
 
 风险：
 
@@ -211,11 +206,9 @@
 
 如果继续做，不建议同时铺太多线。建议按下面顺序推进：
 
-1. 先补 `BodyCacheMiddleware`，把请求链路稳定下来。
-2. 再补 `sceEngine.Close()` 的 shutdown 释放路径。
-3. 然后优化 SCE 查询，至少先把明显的全表扫描压下去。
-4. 再决定 `IntentUpgradeMiddleware` 是继续保留、弱化，还是下线。
-5. 最后再考虑“统一记忆模型”，把 SCE user memory、本地 memory_entries、conversation_turns 做成明确分层。
+1. 优先优化 SCE 查询，至少先把明显的全表扫描压下去。
+2. 再决定 `IntentUpgradeMiddleware` 是继续保留、弱化，还是下线。
+3. 最后再考虑“统一记忆模型”，把 SCE user memory、本地 memory_entries、conversation_turns 做成明确分层。
 
 ## 7. 当前已完成但需要记住的事实
 
@@ -242,4 +235,3 @@
 更正式的当前项目总览见：
 
 - `docs/project-status_CN.md`
-

@@ -27,3 +27,15 @@
 - `.sce/specs/30-01-clirelay-sce-takeover/requirements.md`
 - `.sce/specs/30-01-clirelay-sce-takeover/tasks.md`
 
+### `30-02-v1-runtime-hot-reload`
+
+用途：
+
+1. 规范 `/v1` 链路的运行时资源切换边界
+2. 让 SCE engine 与 Intent Upgrade 配置支持热更新
+3. 收口代码与文档的当前真实状态
+
+入口：
+
+- `.sce/specs/30-02-v1-runtime-hot-reload/requirements.md`
+- `.sce/specs/30-02-v1-runtime-hot-reload/tasks.md`

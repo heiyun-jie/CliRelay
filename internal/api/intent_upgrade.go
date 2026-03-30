@@ -67,34 +67,45 @@ func IntentUpgradeMiddleware(cfg config.IntentUpgradeConfig, localPort int, sceE
 }
 
 func IntentUpgradeMiddlewareWithEngine(cfg config.IntentUpgradeConfig, localPort int, withEngine func(func(*sce.Engine))) gin.HandlerFunc {
-	if !cfg.Enable || cfg.Model == "" {
+	return IntentUpgradeMiddlewareDynamic(func() config.IntentUpgradeConfig {
+		return cfg
+	}, localPort, withEngine)
+}
+
+func IntentUpgradeMiddlewareDynamic(cfgProvider func() config.IntentUpgradeConfig, localPort int, withEngine func(func(*sce.Engine))) gin.HandlerFunc {
+	if cfgProvider == nil {
 		return func(c *gin.Context) { c.Next() }
 	}
 
-	timeoutMs := cfg.TimeoutMs
-	if timeoutMs <= 0 {
-		timeoutMs = 8000
-	}
-	maxInput := cfg.MaxInputTokens
-	if maxInput <= 0 {
-		maxInput = 2000
-	}
-
-	httpClient := &http.Client{
-		Timeout: time.Duration(timeoutMs) * time.Millisecond,
-	}
 	state := newIntentUpgradeState()
 
-	excludeSet := make(map[string]bool, len(cfg.ExcludeModels))
-	for _, m := range cfg.ExcludeModels {
-		excludeSet[strings.ToLower(m)] = true
-	}
-	apiKeySet := make(map[string]bool, len(cfg.APIKeys))
-	for _, k := range cfg.APIKeys {
-		apiKeySet[k] = true
-	}
-
 	return func(c *gin.Context) {
+		cfg := cfgProvider()
+		if !cfg.Enable || cfg.Model == "" {
+			c.Next()
+			return
+		}
+
+		timeoutMs := cfg.TimeoutMs
+		if timeoutMs <= 0 {
+			timeoutMs = 8000
+		}
+		maxInput := cfg.MaxInputTokens
+		if maxInput <= 0 {
+			maxInput = 2000
+		}
+		httpClient := &http.Client{
+			Timeout: time.Duration(timeoutMs) * time.Millisecond,
+		}
+		excludeSet := make(map[string]bool, len(cfg.ExcludeModels))
+		for _, m := range cfg.ExcludeModels {
+			excludeSet[strings.ToLower(m)] = true
+		}
+		apiKeySet := make(map[string]bool, len(cfg.APIKeys))
+		for _, k := range cfg.APIKeys {
+			apiKeySet[k] = true
+		}
+
 		if c.Request.Method != http.MethodPost {
 			c.Next()
 			return

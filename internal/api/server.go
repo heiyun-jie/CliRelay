@@ -190,6 +190,8 @@ type Server struct {
 	// sceEngine is the optional embedded SCE Memory query engine.
 	sceEngineMu sync.RWMutex
 	sceEngine   *sce.Engine
+
+	intentUpgradeCfg atomic.Value
 }
 
 // NewServer creates and initializes a new API server instance.
@@ -267,6 +269,7 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 		envManagementSecret: envManagementSecret,
 		wsRoutes:            make(map[string]struct{}),
 	}
+	s.intentUpgradeCfg.Store(cloneIntentUpgradeConfig(cfg.IntentUpgrade))
 	s.wsAuthEnabled.Store(cfg.WebsocketAuth)
 	// Save initial YAML snapshot
 	s.oldConfigYaml, _ = yaml.Marshal(cfg)
@@ -351,7 +354,7 @@ func (s *Server) setupRoutes() {
 	v1.Use(middleware.BodyCacheMiddleware(bodyutil.DefaultRequestBodyLimit))
 	v1.Use(ModelRestrictionMiddleware())
 	v1.Use(SystemPromptMiddleware())
-	intentMw := IntentUpgradeMiddlewareWithEngine(s.cfg.IntentUpgrade, s.cfg.Port, s.withSCEEngine)
+	intentMw := IntentUpgradeMiddlewareDynamic(s.currentIntentUpgradeConfig, s.cfg.Port, s.withSCEEngine)
 	{
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.POST("/chat/completions", MemoryHydrationMiddlewareWithEngine(s.withSCEEngine), intentMw, openaiHandlers.ChatCompletions)
@@ -1170,6 +1173,26 @@ func (s *Server) reloadSCEEngine(cfg config.SCEMemoryConfig) {
 	s.replaceSCEEngine(engine)
 }
 
+func (s *Server) currentIntentUpgradeConfig() config.IntentUpgradeConfig {
+	if s == nil {
+		return config.IntentUpgradeConfig{}
+	}
+	value := s.intentUpgradeCfg.Load()
+	cfg, _ := value.(config.IntentUpgradeConfig)
+	return cloneIntentUpgradeConfig(cfg)
+}
+
+func cloneIntentUpgradeConfig(cfg config.IntentUpgradeConfig) config.IntentUpgradeConfig {
+	cloned := cfg
+	if cfg.APIKeys != nil {
+		cloned.APIKeys = append([]string(nil), cfg.APIKeys...)
+	}
+	if cfg.ExcludeModels != nil {
+		cloned.ExcludeModels = append([]string(nil), cfg.ExcludeModels...)
+	}
+	return cloned
+}
+
 // corsMiddleware returns a Gin middleware handler that adds CORS headers
 // to every response, allowing cross-origin requests.
 //
@@ -1312,6 +1335,7 @@ func (s *Server) UpdateClients(cfg *config.Config) {
 
 	s.applyAccessConfig(oldCfg, cfg)
 	s.cfg = cfg
+	s.intentUpgradeCfg.Store(cloneIntentUpgradeConfig(cfg.IntentUpgrade))
 	if sceMemoryChanged {
 		s.reloadSCEEngine(cfg.SCEMemory)
 	}
