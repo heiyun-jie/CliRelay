@@ -14,6 +14,7 @@
 2. 管理层：`/v0/management` 提供配置、监控、日志、鉴权文件、记忆等接口。
 3. 面板层：`management-panel/` 是前端控制台源码，服务端可直接托管 `/manage`。
 4. 记忆层：本地 `usage.db` 记忆 + SCE `runtime.db/index.json` 项目知识注入。
+5. 审计层：模型请求日志与管理访问审计已分层持久化。
 
 当前已经落地的记忆相关能力：
 
@@ -66,6 +67,19 @@
   记忆中心页面。
 - `management-panel/src/lib/http/apis/memory.ts`
   记忆中心调用的接口封装。
+- `management-panel/src/modules/monitor/RequestLogsPage.tsx`
+  模型请求日志页面，现已展示来源字段。
+- `management-panel/src/modules/monitor/AccessAuditPage.tsx`
+  管理访问审计页面，独立展示 `/v0/management/*` 访问记录。
+
+### 请求审计
+
+- `internal/usage/usage_db.go`
+  `request_logs` 已保存 `client_ip`、`forwarded_for`、`user_agent`、`request_path`。
+- `internal/usage/access_audit_db.go`
+  管理访问审计表与查询逻辑。
+- `internal/api/handlers/management/handler.go`
+  管理鉴权中间件会对允许/拒绝访问都写入审计日志。
 
 ## 3. 运行时数据流
 
@@ -202,6 +216,19 @@
 1. 两边没有统一评分模型。
 2. 没有统一淘汰、升级、人工审查流程。
 3. 管理面板只直接展示本地 memory，不直接展示 SCE 内部用户记忆。
+
+### P1. 请求来源审计已完成第一版收口
+
+现状：
+
+1. 模型请求日志已经能区分来源机器。
+2. 管理后台访问审计已独立落库，不再复用模型请求日志。
+3. 控制台已分开展示“请求日志”和“访问审计”。
+
+剩余空间：
+
+1. 访问审计还没有导出能力。
+2. 更细粒度筛选项还可以继续补。
 
 ## 6. 当前建议的推进顺序
 

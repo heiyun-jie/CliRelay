@@ -348,7 +348,7 @@ func (s *RequestStatistics) Record(ctx context.Context, record coreusage.Record)
 	}
 	InsertLog(statsKey, apiKeyName, modelName, record.Source, record.ChannelName,
 		record.AuthIndex, failed, timestamp, record.LatencyMs, detail,
-		record.InputContent, record.OutputContent)
+		record.InputContent, record.OutputContent, resolveRequestOrigin(ctx))
 }
 
 func (s *RequestStatistics) updateAPIStats(stats *apiStats, model string, detail RequestDetail) {
@@ -552,6 +552,26 @@ func resolveAPIIdentifier(ctx context.Context, record coreusage.Record) string {
 		return record.Provider
 	}
 	return "unknown"
+}
+
+func resolveRequestOrigin(ctx context.Context) RequestOrigin {
+	if ctx == nil {
+		return RequestOrigin{}
+	}
+	ginCtx, ok := ctx.Value(util.ContextKeyGin).(*gin.Context)
+	if !ok || ginCtx == nil {
+		return RequestOrigin{}
+	}
+	path := ginCtx.FullPath()
+	if path == "" && ginCtx.Request != nil && ginCtx.Request.URL != nil {
+		path = ginCtx.Request.URL.Path
+	}
+	return normalizeRequestOrigin(RequestOrigin{
+		ClientIP:     ginCtx.ClientIP(),
+		ForwardedFor: ginCtx.GetHeader("X-Forwarded-For"),
+		UserAgent:    ginCtx.GetHeader("User-Agent"),
+		RequestPath:  path,
+	})
 }
 
 func resolveSuccess(ctx context.Context) bool {

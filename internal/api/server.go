@@ -527,6 +527,8 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.POST("/usage/import", s.mgmt.ImportUsageStatistics)
 		mgmt.GET("/usage/logs", s.mgmt.GetUsageLogs)
 		mgmt.GET("/usage/logs/:id/content", s.mgmt.GetLogContent)
+		mgmt.GET("/usage/access-logs", s.mgmt.GetManagementAccessLogs)
+		mgmt.GET("/access-logs", s.mgmt.GetManagementAccessLogs)
 		mgmt.GET("/usage/chart-data", s.mgmt.GetUsageChartData)
 		mgmt.GET("/usage/entity-stats", s.mgmt.GetEntityUsageStats)
 		mgmt.GET("/memory", s.mgmt.GetMemoryEntries)

@@ -52,3 +52,16 @@
 
 - `.sce/specs/30-03-sce-query-optimization/requirements.md`
 - `.sce/specs/30-03-sce-query-optimization/tasks.md`
+
+### `30-04-request-origin-audit`
+
+用途：
+
+1. 为模型请求日志补齐来源机器字段
+2. 新增独立的管理访问审计
+3. 在控制台分开展示“模型请求日志”和“访问审计”
+
+入口：
+
+- `.sce/specs/30-04-request-origin-audit/requirements.md`
+- `.sce/specs/30-04-request-origin-audit/tasks.md`

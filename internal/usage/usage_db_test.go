@@ -117,6 +117,55 @@ func TestInsertLogStoresCompressedContentOutsideMainTable(t *testing.T) {
 	}
 }
 
+func TestInsertLogStoresRequestOriginMetadata(t *testing.T) {
+	initTestUsageDB(t, config.RequestLogStorageConfig{
+		StoreContent: false,
+	})
+
+	timestamp := time.Now().UTC()
+	InsertLog(
+		"sk-test",
+		"test-key",
+		"gpt-test",
+		"source",
+		"channel",
+		"auth-1",
+		false,
+		timestamp,
+		123,
+		TokenStats{InputTokens: 1, OutputTokens: 2, TotalTokens: 3},
+		"",
+		"",
+		RequestOrigin{
+			ClientIP:     "10.0.0.8",
+			ForwardedFor: "198.51.100.9, 10.0.0.8",
+			UserAgent:    "codex-cli/1.0",
+			RequestPath:  "/v1/chat/completions",
+		},
+	)
+
+	result, err := QueryLogs(LogQueryParams{Page: 1, Size: 10, Days: 1})
+	if err != nil {
+		t.Fatalf("QueryLogs() error = %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("expected 1 log row, got %d", len(result.Items))
+	}
+	row := result.Items[0]
+	if row.ClientIP != "10.0.0.8" {
+		t.Fatalf("ClientIP = %q, want %q", row.ClientIP, "10.0.0.8")
+	}
+	if row.ForwardedFor != "198.51.100.9, 10.0.0.8" {
+		t.Fatalf("ForwardedFor = %q", row.ForwardedFor)
+	}
+	if row.UserAgent != "codex-cli/1.0" {
+		t.Fatalf("UserAgent = %q", row.UserAgent)
+	}
+	if row.RequestPath != "/v1/chat/completions" {
+		t.Fatalf("RequestPath = %q", row.RequestPath)
+	}
+}
+
 func TestMigrateLegacyContentBatchMovesContentOutOfMainTable(t *testing.T) {
 	initTestUsageDB(t, config.RequestLogStorageConfig{
 		StoreContent:           true,

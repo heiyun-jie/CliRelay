@@ -28,6 +28,9 @@ interface LogRow {
   channelName: string;
   maskedApiKey: string;
   model: string;
+  clientIp: string;
+  forwardedFor: string;
+  userAgent: string;
   failed: boolean;
   latencyText: string;
   inputTokens: number;
@@ -166,6 +169,40 @@ function buildLogColumns(
         ),
     },
     {
+      key: "clientIp",
+      label: "来源 IP",
+      width: "w-32",
+      cellClassName: "font-mono text-xs text-slate-700 dark:text-slate-200",
+      render: (row) => (
+        <OverflowTooltip content={row.clientIp || "--"} className="block min-w-0">
+          <span className="block min-w-0 truncate">{row.clientIp || "--"}</span>
+        </OverflowTooltip>
+      ),
+    },
+    {
+      key: "forwardedFor",
+      label: "转发链",
+      width: "w-56",
+      cellClassName: "font-mono text-xs text-slate-500 dark:text-white/55",
+      render: (row) => (
+        <OverflowTooltip content={row.forwardedFor || "--"} className="block min-w-0">
+          <span className="block min-w-0 truncate">{row.forwardedFor || "--"}</span>
+        </OverflowTooltip>
+      ),
+    },
+    {
+      key: "userAgent",
+      label: "客户端",
+      width: "w-64",
+      render: (row) => (
+        <OverflowTooltip content={row.userAgent || "--"} className="block min-w-0">
+          <span className="block min-w-0 truncate text-xs text-slate-600 dark:text-white/60">
+            {row.userAgent || "--"}
+          </span>
+        </OverflowTooltip>
+      ),
+    },
+    {
       key: "latency",
       label: "用时",
       width: "w-24",
@@ -285,6 +322,9 @@ function toLogRow(item: UsageLogItem): LogRow {
     channelName: item.channel_name || "",
     maskedApiKey: maskApiKey(item.api_key),
     model: item.model,
+    clientIp: item.client_ip || "",
+    forwardedFor: item.forwarded_for || "",
+    userAgent: item.user_agent || "",
     failed: item.failed,
     latencyText: formatLatencyMs(item.latency_ms),
     inputTokens: item.input_tokens,

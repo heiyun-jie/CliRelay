@@ -12,3 +12,4 @@ export { apiKeysApi } from "./apis/api-keys";
 export { modelsApi } from "./apis/models";
 export { versionApi } from "./apis/version";
 export { memoryApi } from "./apis/memory";
+export { accessAuditApi } from "./apis/access-audit";

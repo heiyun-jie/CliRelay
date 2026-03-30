@@ -2,8 +2,11 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const backendTarget = process.env.VITE_API_PROXY_TARGET ?? "http://localhost:8318";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const backendTarget = process.env.VITE_API_PROXY_TARGET ?? "http://localhost:8317";
 
 export default defineConfig({
   base: "/manage/",
@@ -47,7 +50,7 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: 5173,
+    port: 5170,
     proxy: {
       "/v0/management": {
         target: backendTarget,

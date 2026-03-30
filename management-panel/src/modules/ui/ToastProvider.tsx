@@ -1,7 +1,7 @@
 import { createContext, type PropsWithChildren, use, useCallback, useMemo } from "react";
 import { GoeyToaster, goeyToast } from "goey-toast";
 import "goey-toast/styles.css";
-import { useTheme } from "@/modules/ui/ThemeProvider";
+import { THEME_STORAGE_KEY } from "@/lib/constants";
 
 type ToastType = "success" | "error" | "info" | "warning";
 
@@ -12,9 +12,23 @@ interface ToastContextState {
 const ToastContext = createContext<ToastContextState | null>(null);
 
 export function ToastProvider({ children }: PropsWithChildren) {
-  const {
-    state: { mode },
-  } = useTheme();
+  const mode = (() => {
+    if (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) {
+      return "dark";
+    }
+    try {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY);
+      if (stored === "dark" || stored === "light") {
+        return stored;
+      }
+    } catch {
+      // ignore localStorage access errors
+    }
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)")?.matches) {
+      return "dark";
+    }
+    return "light";
+  })();
 
   const notify = useCallback(
     (input: { type?: ToastType; title?: string; message: string; duration?: number }) => {

@@ -6,6 +6,7 @@ import { LoginPage } from "@/modules/login/LoginPage";
 import { DashboardPage } from "@/modules/dashboard/DashboardPage";
 import { MonitorPage } from "@/modules/monitor/MonitorPage";
 import { RequestLogsPage } from "@/modules/monitor/RequestLogsPage";
+import { AccessAuditPage } from "@/modules/monitor/AccessAuditPage";
 import { ProvidersPage } from "@/modules/providers/ProvidersPage";
 import { AuthFilesPage } from "@/modules/auth-files/AuthFilesPage";
 import { OAuthPage } from "@/modules/oauth/OAuthPage";
@@ -41,6 +42,7 @@ export function AppRouter() {
                         <Route path="/dashboard" element={<DashboardPage />} />
                         <Route path="/monitor" element={<MonitorPage />} />
                         <Route path="/monitor/request-logs" element={<RequestLogsPage />} />
+                        <Route path="/monitor/access-audit" element={<AccessAuditPage />} />
                         <Route path="/ai-providers" element={<ProvidersPage />} />
                         <Route path="/ai-providers/*" element={<ProvidersPage />} />
                         <Route path="/auth-files" element={<AuthFilesPage />} />

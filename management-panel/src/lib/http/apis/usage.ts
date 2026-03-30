@@ -194,6 +194,10 @@ export interface UsageLogItem {
   total_tokens: number;
   cost: number;
   has_content: boolean;
+  client_ip: string;
+  forwarded_for: string;
+  user_agent: string;
+  request_path: string;
 }
 
 export interface UsageLogsResponse {

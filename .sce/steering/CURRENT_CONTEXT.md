@@ -2,7 +2,7 @@
 
 ## 1. 当前目标
 
-当前目标不是继续解释项目，而是正式让这个仓库进入 SCE 工作方式。
+当前目标不是继续解释项目，而是持续按 SCE 工作方式推进已有 Active Spec，并把代码、配置、文档状态保持一致。
 
 这意味着：
 
@@ -25,6 +25,10 @@
    - `internal/cmd/sce_memory_import.go`
 4. 仓库已经有前端记忆中心：
    - `management-panel/src/modules/memory/MemoryPage.tsx`
+5. 仓库已经补齐请求来源审计第一版：
+   - `request_logs` 已支持来源字段
+   - `management_access_logs` 已独立落库
+   - 控制台已拆分“请求日志”和“访问审计”
 
 ## 3. 当前活跃 Spec
 
@@ -32,12 +36,13 @@
 - `30-01-clirelay-sce-takeover`
 - `30-02-v1-runtime-hot-reload`
 - `30-03-sce-query-optimization`
+- `30-04-request-origin-audit`
 
 ## 4. 当前优先问题
 
-1. SCE 查询策略需要从全量读取进入候选筛选模式。
-2. 本地记忆和 SCE user memory 还没有统一治理边界。
-3. Intent Upgrade 仍需要质量约束，而不只是运行时热更新。
+1. 本地记忆和 SCE user memory 还没有统一治理边界。
+2. 请求来源审计已经落地，但还没有继续扩展到更细粒度的筛选/导出能力。
+3. 记忆质量治理仍缺少“自动沉淀/人工审核/淘汰”统一闭环。
 
 ## 5. 当前默认执行顺序
 

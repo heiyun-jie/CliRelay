@@ -24,6 +24,7 @@ import {
   PanelLeftOpen,
   ScrollText,
   Settings,
+  ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/modules/auth/AuthProvider";
@@ -46,6 +47,7 @@ const NAV_ITEMS = [
   { to: "/dashboard", label: "仪表盘", icon: LayoutDashboard },
   { to: "/monitor", label: "监控中心", icon: Activity },
   { to: "/monitor/request-logs", label: "请求日志", icon: ScrollText },
+  { to: "/monitor/access-audit", label: "访问审计", icon: ShieldCheck },
   { to: "/ai-providers", label: "AI供应商", icon: Bot },
   { to: "/auth-files", label: "认证文件", icon: FileKey },
   { to: "/oauth", label: "OAuth登录", icon: KeyRound },
@@ -64,6 +66,9 @@ const getPageTitle = (pathname: string): string => {
   }
   if (pathname.startsWith("/monitor/request-logs")) {
     return "请求日志";
+  }
+  if (pathname.startsWith("/monitor/access-audit")) {
+    return "访问审计";
   }
   if (pathname.startsWith("/monitor")) {
     return "监控中心";

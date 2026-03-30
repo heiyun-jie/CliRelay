@@ -32,6 +32,10 @@ type LogRow struct {
 	TotalTokens     int64     `json:"total_tokens"`
 	Cost            float64   `json:"cost"`
 	HasContent      bool      `json:"has_content"`
+	ClientIP        string    `json:"client_ip"`
+	ForwardedFor    string    `json:"forwarded_for"`
+	UserAgent       string    `json:"user_agent"`
+	RequestPath     string    `json:"request_path"`
 }
 
 // LogQueryParams holds filter/pagination parameters for QueryLogs.
@@ -79,10 +83,15 @@ CREATE TABLE IF NOT EXISTS request_logs (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   timestamp        DATETIME NOT NULL,
   api_key          TEXT NOT NULL DEFAULT '',
+  api_key_name     TEXT NOT NULL DEFAULT '',
   model            TEXT NOT NULL DEFAULT '',
   source           TEXT NOT NULL DEFAULT '',
   channel_name     TEXT NOT NULL DEFAULT '',
   auth_index       TEXT NOT NULL DEFAULT '',
+  client_ip        TEXT NOT NULL DEFAULT '',
+  forwarded_for    TEXT NOT NULL DEFAULT '',
+  user_agent       TEXT NOT NULL DEFAULT '',
+  request_path     TEXT NOT NULL DEFAULT '',
   failed           INTEGER NOT NULL DEFAULT 0,
   latency_ms       INTEGER NOT NULL DEFAULT 0,
   input_tokens     INTEGER NOT NULL DEFAULT 0,
@@ -90,6 +99,7 @@ CREATE TABLE IF NOT EXISTS request_logs (
   reasoning_tokens INTEGER NOT NULL DEFAULT 0,
   cached_tokens    INTEGER NOT NULL DEFAULT 0,
   total_tokens     INTEGER NOT NULL DEFAULT 0,
+  cost             REAL NOT NULL DEFAULT 0,
   input_content    TEXT NOT NULL DEFAULT '',
   output_content   TEXT NOT NULL DEFAULT ''
 );
@@ -142,6 +152,21 @@ func migrateApiKeyNameColumn(db *sql.DB) {
 	if err != nil {
 		if !strings.Contains(err.Error(), "duplicate") {
 			log.Warnf("usage: migrate column api_key_name: %v", err)
+		}
+	}
+}
+
+func migrateRequestOriginColumns(db *sql.DB) {
+	originColumns := map[string]string{
+		"client_ip":     "TEXT NOT NULL DEFAULT ''",
+		"forwarded_for": "TEXT NOT NULL DEFAULT ''",
+		"user_agent":    "TEXT NOT NULL DEFAULT ''",
+		"request_path":  "TEXT NOT NULL DEFAULT ''",
+	}
+	for column, ddl := range originColumns {
+		_, err := db.Exec(fmt.Sprintf("ALTER TABLE request_logs ADD COLUMN %s %s", column, ddl))
+		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			log.Warnf("usage: migrate column %s: %v", column, err)
 		}
 	}
 }
@@ -209,12 +234,16 @@ func InitDB(dbPath string, storageCfg config.RequestLogStorageConfig, loc *time.
 	migrateCostColumn(db)
 	log.Debugf("usage: running api_key_name column migration")
 	migrateApiKeyNameColumn(db)
+	log.Debugf("usage: running request origin column migration")
+	migrateRequestOriginColumns(db)
 	log.Debugf("usage: initializing pricing table")
 	initPricingTable(db)
 	log.Debugf("usage: initializing api_keys table")
 	initAPIKeysTable(db)
 	log.Debugf("usage: initializing memory tables")
 	initMemoryTables(db)
+	log.Debugf("usage: initializing management access audit tables")
+	initManagementAccessTables(db)
 	startRequestLogMaintenance(db)
 	log.Infof("usage: SQLite database initialised at %s", dbPath)
 	return nil
@@ -238,7 +267,7 @@ func CloseDB() {
 // It is safe to call concurrently.
 func InsertLog(apiKey, apiKeyName, model, source, channelName, authIndex string,
 	failed bool, timestamp time.Time, latencyMs int64, tokens TokenStats,
-	inputContent, outputContent string) {
+	inputContent, outputContent string, origins ...RequestOrigin) {
 
 	db := getDB()
 	if db == nil {
@@ -252,6 +281,11 @@ func InsertLog(apiKey, apiKeyName, model, source, channelName, authIndex string,
 
 	// Calculate cost based on model pricing
 	cost := CalculateCost(model, tokens.InputTokens, tokens.OutputTokens, tokens.CachedTokens)
+	origin := RequestOrigin{}
+	if len(origins) > 0 {
+		origin = origins[0]
+	}
+	origin = normalizeRequestOrigin(origin)
 
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -262,10 +296,12 @@ func InsertLog(apiKey, apiKeyName, model, source, channelName, authIndex string,
 	result, err := tx.Exec(
 		`INSERT INTO request_logs
 			(timestamp, api_key, api_key_name, model, source, channel_name, auth_index,
+			 client_ip, forwarded_for, user_agent, request_path,
 			 failed, latency_ms, input_tokens, output_tokens, reasoning_tokens, cached_tokens, total_tokens, cost)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		timestamp.UTC().Format(time.RFC3339Nano),
 		apiKey, apiKeyName, model, source, channelName, authIndex,
+		origin.ClientIP, origin.ForwardedFor, origin.UserAgent, origin.RequestPath,
 		failedInt, latencyMs,
 		tokens.InputTokens, tokens.OutputTokens, tokens.ReasoningTokens,
 		tokens.CachedTokens, tokens.TotalTokens, cost,
@@ -344,6 +380,7 @@ func QueryLogs(params LogQueryParams) (LogQueryResult, error) {
 	// Fetch page
 	offset := (params.Page - 1) * params.Size
 	querySQL := "SELECT id, timestamp, api_key, api_key_name, model, source, channel_name, auth_index, " +
+		"client_ip, forwarded_for, user_agent, request_path, " +
 		"failed, latency_ms, input_tokens, output_tokens, reasoning_tokens, cached_tokens, total_tokens, " +
 		"cost, " +
 		"(CASE WHEN EXISTS (SELECT 1 FROM request_log_content content WHERE content.log_id = request_logs.id) " +
@@ -365,7 +402,8 @@ func QueryLogs(params LogQueryParams) (LogQueryResult, error) {
 		var failedInt, hasContentInt int
 		if err := rows.Scan(
 			&row.ID, &ts, &row.APIKey, &row.APIKeyName, &row.Model, &row.Source, &row.ChannelName,
-			&row.AuthIndex, &failedInt, &row.LatencyMs,
+			&row.AuthIndex, &row.ClientIP, &row.ForwardedFor, &row.UserAgent, &row.RequestPath,
+			&failedInt, &row.LatencyMs,
 			&row.InputTokens, &row.OutputTokens, &row.ReasoningTokens,
 			&row.CachedTokens, &row.TotalTokens, &row.Cost, &hasContentInt,
 		); err != nil {

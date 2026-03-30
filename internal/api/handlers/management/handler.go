@@ -181,6 +181,10 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 			allowRemote = true
 		}
 		envSecret := h.envSecret
+		reject := func(statusCode int, authSubject, message string) {
+			h.auditManagementAccess(c, statusCode, false, authSubject)
+			c.AbortWithStatusJSON(statusCode, gin.H{"error": message})
+		}
 
 		fail := func() {}
 		if !localClient {
@@ -191,7 +195,7 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 					if time.Now().Before(ai.blockedUntil) {
 						remaining := time.Until(ai.blockedUntil).Round(time.Second)
 						h.attemptsMu.Unlock()
-						c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("IP banned due to too many failed attempts. Try again in %s", remaining)})
+						reject(http.StatusForbidden, "banned", fmt.Sprintf("IP banned due to too many failed attempts. Try again in %s", remaining))
 						return
 					}
 					// Ban expired, reset state
@@ -202,7 +206,7 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 			h.attemptsMu.Unlock()
 
 			if !allowRemote {
-				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "remote management disabled"})
+				reject(http.StatusForbidden, "remote-disabled", "remote management disabled")
 				return
 			}
 
@@ -223,7 +227,7 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 			}
 		}
 		if secretHash == "" && envSecret == "" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "remote management key not set"})
+			reject(http.StatusForbidden, "secret-not-configured", "remote management key not set")
 			return
 		}
 
@@ -249,7 +253,7 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 			if !localClient {
 				fail()
 			}
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing management key"})
+			reject(http.StatusUnauthorized, "missing-key", "missing management key")
 			return
 		}
 
@@ -257,6 +261,7 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 			if lp := h.localPassword; lp != "" {
 				if subtle.ConstantTimeCompare([]byte(provided), []byte(lp)) == 1 {
 					c.Next()
+					h.auditManagementAccess(c, c.Writer.Status(), true, "local-password")
 					return
 				}
 			}
@@ -272,6 +277,7 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 				h.attemptsMu.Unlock()
 			}
 			c.Next()
+			h.auditManagementAccess(c, c.Writer.Status(), true, "env-secret")
 			return
 		}
 
@@ -279,7 +285,7 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 			if !localClient {
 				fail()
 			}
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid management key"})
+			reject(http.StatusUnauthorized, "invalid-key", "invalid management key")
 			return
 		}
 
@@ -293,7 +299,40 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 		}
 
 		c.Next()
+		h.auditManagementAccess(c, c.Writer.Status(), true, "config-secret")
 	}
+}
+
+func (h *Handler) auditManagementAccess(c *gin.Context, statusCode int, allowed bool, authSubject string) {
+	if c == nil {
+		return
+	}
+	method := ""
+	path := c.FullPath()
+	if c.Request != nil {
+		method = c.Request.Method
+		if path == "" && c.Request.URL != nil {
+			path = c.Request.URL.Path
+		}
+	}
+	if statusCode == 0 {
+		if allowed {
+			statusCode = http.StatusOK
+		} else {
+			statusCode = http.StatusUnauthorized
+		}
+	}
+	_ = usage.InsertManagementAccessLog(usage.ManagementAccessLog{
+		Timestamp:    time.Now().UTC(),
+		ClientIP:     c.ClientIP(),
+		ForwardedFor: c.GetHeader("X-Forwarded-For"),
+		UserAgent:    c.GetHeader("User-Agent"),
+		Method:       method,
+		Path:         path,
+		StatusCode:   statusCode,
+		Allowed:      allowed,
+		AuthSubject:  authSubject,
+	})
 }
 
 // persist saves the current in-memory config to disk.

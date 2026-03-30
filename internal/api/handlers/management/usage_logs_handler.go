@@ -77,6 +77,25 @@ func (h *Handler) GetUsageLogs(c *gin.Context) {
 	})
 }
 
+// GetManagementAccessLogs returns paginated management access audit records.
+func (h *Handler) GetManagementAccessLogs(c *gin.Context) {
+	params := usage.ManagementAccessLogQueryParams{
+		Page:        intQueryDefault(c, "page", 1),
+		Size:        intQueryDefault(c, "size", 50),
+		Days:        intQueryDefault(c, "days", 7),
+		Allowed:     strings.TrimSpace(c.Query("allowed")),
+		AuthSubject: strings.TrimSpace(c.Query("auth_subject")),
+	}
+
+	result, err := usage.QueryManagementAccessLogs(params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
 // buildNameMaps builds two maps from the current config:
 //  1. keyNameMap:     user-facing api_key → display name (from SQLite api_keys table)
 //  2. channelNameMap: provider_api_key → channel name (from provider config Name fields)
@@ -199,6 +218,10 @@ func (h *Handler) GetPublicUsageLogs(c *gin.Context) {
 		result.Items[i].ChannelName = ""
 		result.Items[i].APIKey = ""
 		result.Items[i].APIKeyName = ""
+		result.Items[i].ClientIP = ""
+		result.Items[i].ForwardedFor = ""
+		result.Items[i].UserAgent = ""
+		result.Items[i].RequestPath = ""
 	}
 
 	// Model filter options (scoped to this api_key via QueryFilters with key filter)
