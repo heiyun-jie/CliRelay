@@ -59,6 +59,14 @@ func (s *intentUpgradeState) canWriteBack(apiKey string) bool {
 // The analysis call is routed through CliRelay's own /v1/chat/completions
 // endpoint (using the configured channel). A header guard prevents recursion.
 func IntentUpgradeMiddleware(cfg config.IntentUpgradeConfig, localPort int, sceEngine *sce.Engine) gin.HandlerFunc {
+	return IntentUpgradeMiddlewareWithEngine(cfg, localPort, func(fn func(*sce.Engine)) {
+		if fn != nil {
+			fn(sceEngine)
+		}
+	})
+}
+
+func IntentUpgradeMiddlewareWithEngine(cfg config.IntentUpgradeConfig, localPort int, withEngine func(func(*sce.Engine))) gin.HandlerFunc {
 	if !cfg.Enable || cfg.Model == "" {
 		return func(c *gin.Context) { c.Next() }
 	}
@@ -158,13 +166,18 @@ func IntentUpgradeMiddleware(cfg config.IntentUpgradeConfig, localPort int, sceE
 		c.Next()
 
 		// Async feedback write-back to SCE.
-		if sceEngine != nil && state.canWriteBack(apiKeyStr) {
+		if withEngine != nil && state.canWriteBack(apiKeyStr) {
 			go func() {
-				_, _ = sceEngine.Remember(
-					fmt.Sprintf("Intent: %s | Context: %s", analysis.Intent, analysis.SuggestedContext),
-					"auto-feedback", "user", "clirelay-intent-upgrade", "low",
-					[]string{"intent-upgrade", "auto"},
-				)
+				withEngine(func(engine *sce.Engine) {
+					if engine == nil {
+						return
+					}
+					_, _ = engine.Remember(
+						fmt.Sprintf("Intent: %s | Context: %s", analysis.Intent, analysis.SuggestedContext),
+						"auto-feedback", "user", "clirelay-intent-upgrade", "low",
+						[]string{"intent-upgrade", "auto"},
+					)
+				})
 			}()
 		}
 	}

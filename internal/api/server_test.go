@@ -123,3 +123,20 @@ func TestServerStopReleasesSCEEngine(t *testing.T) {
 		t.Fatal("expected sceEngine to be released on Stop()")
 	}
 }
+
+func TestReplaceSCEEngineReplacesCurrentPointer(t *testing.T) {
+	server := newTestServer(t)
+	first := &sce.Engine{}
+	second := &sce.Engine{}
+
+	server.replaceSCEEngine(first)
+	server.replaceSCEEngine(second)
+
+	if server.sceEngine != second {
+		t.Fatal("expected latest sceEngine pointer to be active")
+	}
+	server.closeSCEEngine()
+	if server.sceEngine != nil {
+		t.Fatal("expected sceEngine to be nil after closeSCEEngine()")
+	}
+}

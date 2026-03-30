@@ -51,6 +51,15 @@ func (w *memoryCaptureWriter) WriteString(data string) (int, error) {
 // into supported request bodies. When sceEngine is non-nil, SCE results are queried in-process
 // and merged into the injection text.
 func MemoryHydrationMiddleware(sceEngine *sce.Engine) gin.HandlerFunc {
+	return MemoryHydrationMiddlewareWithEngine(func(fn func(*sce.Engine)) {
+		if fn != nil {
+			fn(sceEngine)
+		}
+	})
+}
+
+// MemoryHydrationMiddlewareWithEngine resolves the current SCE engine for each request.
+func MemoryHydrationMiddlewareWithEngine(withEngine func(func(*sce.Engine))) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request.Method != http.MethodPost {
 			c.Next()
@@ -89,12 +98,17 @@ func MemoryHydrationMiddleware(sceEngine *sce.Engine) gin.HandlerFunc {
 
 		// Query SCE engine (in-process, ~5ms).
 		var sceResult *sce.HydrateResult
-		if sceEngine != nil && queryText != "" {
-			var sceErr error
-			sceResult, sceErr = sceEngine.HydrateContext(queryText, 0)
-			if sceErr != nil {
-				log.WithError(sceErr).Warn("SCE memory hydration query failed")
-			}
+		if withEngine != nil && queryText != "" {
+			withEngine(func(engine *sce.Engine) {
+				if engine == nil {
+					return
+				}
+				var sceErr error
+				sceResult, sceErr = engine.HydrateContext(queryText, 0)
+				if sceErr != nil {
+					log.WithError(sceErr).Warn("SCE memory hydration query failed")
+				}
+			})
 		}
 
 		injectedText := buildUnifiedMemoryText(memories, turns, sceResult)

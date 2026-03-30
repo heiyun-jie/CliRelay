@@ -188,7 +188,8 @@ type Server struct {
 	keepAliveStop      chan struct{}
 
 	// sceEngine is the optional embedded SCE Memory query engine.
-	sceEngine *sce.Engine
+	sceEngineMu sync.RWMutex
+	sceEngine   *sce.Engine
 }
 
 // NewServer creates and initializes a new API server instance.
@@ -287,15 +288,8 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 	}
 	s.localPassword = optionState.localPassword
 
-	// Initialize embedded SCE Memory engine if enabled
-	if cfg.SCEMemory.Enable && cfg.SCEMemory.DBPath != "" {
-		engine, err := sce.NewEngine(cfg.SCEMemory)
-		if err != nil {
-			log.WithError(err).Warn("SCE engine initialization failed, continuing without SCE memory")
-		} else {
-			s.sceEngine = engine
-		}
-	}
+	// Initialize embedded SCE Memory engine if enabled.
+	s.reloadSCEEngine(cfg.SCEMemory)
 
 	// Setup routes
 	s.setupRoutes()
@@ -357,16 +351,16 @@ func (s *Server) setupRoutes() {
 	v1.Use(middleware.BodyCacheMiddleware(bodyutil.DefaultRequestBodyLimit))
 	v1.Use(ModelRestrictionMiddleware())
 	v1.Use(SystemPromptMiddleware())
-	intentMw := IntentUpgradeMiddleware(s.cfg.IntentUpgrade, s.cfg.Port, s.sceEngine)
+	intentMw := IntentUpgradeMiddlewareWithEngine(s.cfg.IntentUpgrade, s.cfg.Port, s.withSCEEngine)
 	{
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
-		v1.POST("/chat/completions", MemoryHydrationMiddleware(s.sceEngine), intentMw, openaiHandlers.ChatCompletions)
-		v1.POST("/completions", MemoryHydrationMiddleware(s.sceEngine), intentMw, openaiHandlers.Completions)
-		v1.POST("/messages", MemoryHydrationMiddleware(s.sceEngine), intentMw, claudeCodeHandlers.ClaudeMessages)
+		v1.POST("/chat/completions", MemoryHydrationMiddlewareWithEngine(s.withSCEEngine), intentMw, openaiHandlers.ChatCompletions)
+		v1.POST("/completions", MemoryHydrationMiddlewareWithEngine(s.withSCEEngine), intentMw, openaiHandlers.Completions)
+		v1.POST("/messages", MemoryHydrationMiddlewareWithEngine(s.withSCEEngine), intentMw, claudeCodeHandlers.ClaudeMessages)
 		v1.POST("/messages/count_tokens", claudeCodeHandlers.ClaudeCountTokens)
 		v1.GET("/responses", openaiResponsesHandlers.ResponsesWebsocket)
-		v1.POST("/responses", MemoryHydrationMiddleware(s.sceEngine), intentMw, openaiResponsesHandlers.Responses)
-		v1.POST("/responses/compact", MemoryHydrationMiddleware(s.sceEngine), intentMw, openaiResponsesHandlers.Compact)
+		v1.POST("/responses", MemoryHydrationMiddlewareWithEngine(s.withSCEEngine), intentMw, openaiResponsesHandlers.Responses)
+		v1.POST("/responses/compact", MemoryHydrationMiddlewareWithEngine(s.withSCEEngine), intentMw, openaiResponsesHandlers.Compact)
 	}
 
 	// Gemini compatible API routes
@@ -1134,11 +1128,46 @@ func (s *Server) Stop(ctx context.Context) error {
 }
 
 func (s *Server) closeSCEEngine() {
-	if s == nil || s.sceEngine == nil {
+	s.replaceSCEEngine(nil)
+}
+
+func (s *Server) withSCEEngine(fn func(*sce.Engine)) {
+	if s == nil || fn == nil {
 		return
 	}
-	s.sceEngine.Close()
-	s.sceEngine = nil
+	s.sceEngineMu.RLock()
+	engine := s.sceEngine
+	fn(engine)
+	s.sceEngineMu.RUnlock()
+}
+
+func (s *Server) replaceSCEEngine(engine *sce.Engine) {
+	if s == nil {
+		if engine != nil {
+			engine.Close()
+		}
+		return
+	}
+	s.sceEngineMu.Lock()
+	oldEngine := s.sceEngine
+	s.sceEngine = engine
+	s.sceEngineMu.Unlock()
+	if oldEngine != nil && oldEngine != engine {
+		oldEngine.Close()
+	}
+}
+
+func (s *Server) reloadSCEEngine(cfg config.SCEMemoryConfig) {
+	var engine *sce.Engine
+	if cfg.Enable && cfg.DBPath != "" {
+		createdEngine, err := sce.NewEngine(cfg)
+		if err != nil {
+			log.WithError(err).Warn("SCE engine initialization failed, continuing without SCE memory")
+		} else {
+			engine = createdEngine
+		}
+	}
+	s.replaceSCEEngine(engine)
 }
 
 // corsMiddleware returns a Gin middleware handler that adds CORS headers
@@ -1238,6 +1267,7 @@ func (s *Server) UpdateClients(cfg *config.Config) {
 	if oldCfg == nil || oldCfg.DisableCooling != cfg.DisableCooling {
 		auth.SetQuotaCooldownDisabled(cfg.DisableCooling)
 	}
+	sceMemoryChanged := oldCfg == nil || !reflect.DeepEqual(oldCfg.SCEMemory, cfg.SCEMemory)
 
 	if s.handlers != nil && s.handlers.AuthManager != nil {
 		s.handlers.AuthManager.SetRetryConfig(cfg.RequestRetry, time.Duration(cfg.MaxRetryInterval)*time.Second)
@@ -1282,6 +1312,9 @@ func (s *Server) UpdateClients(cfg *config.Config) {
 
 	s.applyAccessConfig(oldCfg, cfg)
 	s.cfg = cfg
+	if sceMemoryChanged {
+		s.reloadSCEEngine(cfg.SCEMemory)
+	}
 	s.wsAuthEnabled.Store(cfg.WebsocketAuth)
 	if oldCfg != nil && s.wsAuthChanged != nil && oldCfg.WebsocketAuth != cfg.WebsocketAuth {
 		s.wsAuthChanged(oldCfg.WebsocketAuth, cfg.WebsocketAuth)
