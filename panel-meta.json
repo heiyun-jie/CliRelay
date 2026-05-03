@@ -1,7 +1,7 @@
 {
-  "build_date": "2026-05-03T13:14:10.515Z",
-  "commit": "c120bba529c748b01cee6e4b9ac10ddf17d619a2",
-  "ref": "fix/ccswitch-client-specific-import",
+  "build_date": "2026-05-03T13:28:10.915Z",
+  "commit": "c9234484b2835215ff6be97e61b499afdcdb346f",
+  "ref": "fix/ccswitch-import-modal-ui",
   "repository": "git@github.com:kittors/codeProxy.git",
-  "version": "panel-fix/ccswitch-client-specific-import-c120bba"
+  "version": "panel-fix/ccswitch-import-modal-ui-c923448"
 }
