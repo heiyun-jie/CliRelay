@@ -120,3 +120,42 @@ func TestChannelGroupsRoutingStrategyControlIsGroupScoped(t *testing.T) {
 		}
 	}
 }
+
+func TestChannelGroupsPageOmitsRedundantIntroCopy(t *testing.T) {
+	_, pageContent := readManagementAssetByPrefix(t, "ChannelGroupsPage")
+	for _, unwanted := range []string{
+		`a("channel_groups_page.description")`,
+		`a("channel_groups_page.editor_hint")`,
+		`r("channel_groups_page.groups_table_title")`,
+		`r("channel_groups_page.groups_table_desc")`,
+	} {
+		if strings.Contains(pageContent, unwanted) {
+			t.Fatalf("channel groups page should not render redundant copy key %q", unwanted)
+		}
+	}
+
+	_, zhContent := readManagementAssetByPrefix(t, "zh-CN")
+	for _, unwanted := range []string{
+		`在独立页面维护渠道分组和路径路由`,
+		`这里只维护渠道分组和路径路由，页面已简化为必要操作。`,
+		`groups_table_title:"渠道分组"`,
+		`把多个渠道归到一个组，供路径入口和 API Key 权限复用。`,
+	} {
+		if strings.Contains(zhContent, unwanted) {
+			t.Fatalf("zh-CN asset should not contain redundant channel groups copy %q", unwanted)
+		}
+	}
+
+	_, enContent := readManagementAssetByPrefix(t, "en")
+	for _, unwanted := range []string{
+		`Manage channel groups and path routing in one dedicated page.`,
+		`This page only manages channel groups and path routes, with the flow kept intentionally simple.`,
+		`groups_table_title:"Channel groups"`,
+		`Group multiple channels together for path entries and API key permissions.`,
+		`Group actual channels, then reuse those groups in paths and API key permissions.`,
+	} {
+		if strings.Contains(enContent, unwanted) {
+			t.Fatalf("en asset should not contain redundant channel groups copy %q", unwanted)
+		}
+	}
+}
