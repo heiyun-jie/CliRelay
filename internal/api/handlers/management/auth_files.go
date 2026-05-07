@@ -696,6 +696,9 @@ func (h *Handler) buildAuthFileEntry(auth *coreauth.Auth) gin.H {
 	entry["custom_tags"] = tags.CustomTags
 	entry["hidden_default_tags"] = tags.HiddenDefaultTags
 	entry["display_tags"] = tags.DisplayTags
+	if planType := normalizeTagValue(metadataString(auth.Metadata, "plan_type", "planType")); planType != "" {
+		entry["plan_type"] = planType
+	}
 	addSubscriptionFields(entry, auth.Metadata, time.Now())
 	if !auth.CreatedAt.IsZero() {
 		entry["created_at"] = auth.CreatedAt

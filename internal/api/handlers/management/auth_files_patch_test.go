@@ -3,6 +3,7 @@ package management
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -317,6 +318,88 @@ func TestBuildAuthFileEntryHonorsExplicitEmptyDisplayTags(t *testing.T) {
 	if len(displayTags) != 0 {
 		t.Fatalf("display_tags = %#v, want empty list", displayTags)
 	}
+}
+
+func TestBuildAuthFileEntryReplacesStaleExplicitPlanDisplayTag(t *testing.T) {
+	auth := &coreauth.Auth{
+		ID:       "codex-downgraded-tags",
+		FileName: "codex-downgraded-tags.json",
+		Provider: "codex",
+		Attributes: map[string]string{
+			"path": "codex-downgraded-tags.json",
+		},
+		Metadata: map[string]any{
+			"plan_type":    "free",
+			"display_tags": []string{"codex", "plus"},
+		},
+	}
+
+	entry := (&Handler{}).buildAuthFileEntry(auth)
+	if entry == nil {
+		t.Fatal("expected auth file entry")
+	}
+	defaultTags, ok := entry["default_tags"].([]string)
+	if !ok {
+		t.Fatalf("default_tags type = %T, want []string", entry["default_tags"])
+	}
+	if len(defaultTags) != 2 || defaultTags[0] != "codex" || defaultTags[1] != "free" {
+		t.Fatalf("default_tags = %#v, want [codex free]", defaultTags)
+	}
+	displayTags, ok := entry["display_tags"].([]string)
+	if !ok {
+		t.Fatalf("display_tags type = %T, want []string", entry["display_tags"])
+	}
+	if len(displayTags) != 2 || displayTags[0] != "codex" || displayTags[1] != "free" {
+		t.Fatalf("display_tags = %#v, want [codex free]", displayTags)
+	}
+}
+
+func TestBuildAuthFileEntryExposesMetadataPlanTypeBeforeIDTokenClaim(t *testing.T) {
+	idToken := makeManagementJWTForTest(t, map[string]any{
+		"https://api.openai.com/auth": map[string]any{
+			"chatgpt_plan_type":  "plus",
+			"chatgpt_account_id": "acct_123",
+		},
+	})
+	auth := &coreauth.Auth{
+		ID:       "codex-stale-id-token",
+		FileName: "codex-stale-id-token.json",
+		Provider: "codex",
+		Attributes: map[string]string{
+			"path": "codex-stale-id-token.json",
+		},
+		Metadata: map[string]any{
+			"plan_type": "free",
+			"id_token":  idToken,
+		},
+	}
+
+	entry := (&Handler{}).buildAuthFileEntry(auth)
+	if entry == nil {
+		t.Fatal("expected auth file entry")
+	}
+	if got, _ := entry["plan_type"].(string); got != "free" {
+		t.Fatalf("plan_type = %q, want free", got)
+	}
+	claims, ok := entry["id_token"].(gin.H)
+	if !ok {
+		t.Fatalf("id_token type = %T, want gin.H", entry["id_token"])
+	}
+	if got, _ := claims["plan_type"].(string); got != "plus" {
+		t.Fatalf("id_token.plan_type = %q, want plus", got)
+	}
+}
+
+func makeManagementJWTForTest(t *testing.T, claims map[string]any) string {
+	t.Helper()
+	encode := func(v any) string {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal jwt part: %v", err)
+		}
+		return base64.RawURLEncoding.EncodeToString(raw)
+	}
+	return encode(map[string]any{"alg": "none", "typ": "JWT"}) + "." + encode(claims) + ".sig"
 }
 
 func TestBuildAuthFileEntryIncludesActiveRestrictions(t *testing.T) {
