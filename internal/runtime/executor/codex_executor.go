@@ -244,6 +244,7 @@ func (e *CodexExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, re
 		sysContent := extractSystemMessagesAsInstructions(req.Payload)
 		body, _ = sjson.SetBytes(body, "instructions", sysContent)
 	}
+	body = compressImageDataURLsInJSON(body)
 
 	url := strings.TrimSuffix(baseURL, "/") + "/responses"
 	httpReq, err := e.cacheHelper(ctx, from, url, req, body)
@@ -362,6 +363,7 @@ func (e *CodexExecutor) executeCompact(ctx context.Context, auth *cliproxyauth.A
 	body = applyPayloadConfigWithRoot(e.cfg, baseModel, to.String(), "", body, originalTranslated, requestedModel)
 	body = ensureTranslatedCodexModel(body, baseModel)
 	body, _ = sjson.DeleteBytes(body, "stream")
+	body = compressImageDataURLsInJSON(body)
 
 	url := strings.TrimSuffix(baseURL, "/") + "/responses/compact"
 	httpReq, err := e.cacheHelper(ctx, from, url, req, body)
@@ -460,6 +462,7 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 		sysContent := extractSystemMessagesAsInstructions(req.Payload)
 		body, _ = sjson.SetBytes(body, "instructions", sysContent)
 	}
+	body = compressImageDataURLsInJSON(body)
 
 	url := strings.TrimSuffix(baseURL, "/") + "/responses"
 	httpReq, err := e.cacheHelper(ctx, from, url, req, body)

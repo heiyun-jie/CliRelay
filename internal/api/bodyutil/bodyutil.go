@@ -11,7 +11,9 @@ import (
 )
 
 const (
-	DefaultRequestBodyLimit   int64 = 16 << 20
+	// Model requests can carry inline Base64 images; executors compress those
+	// before forwarding, so the ingress limit must allow them to be read first.
+	DefaultRequestBodyLimit   int64 = 64 << 20
 	ManagementBodyLimit       int64 = 2 << 20
 	ConfigYAMLBodyLimit       int64 = 2 << 20
 	AuthFileBodyLimit         int64 = 2 << 20

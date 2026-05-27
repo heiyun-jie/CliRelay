@@ -112,6 +112,8 @@ func (e *OpenAICompatExecutor) Execute(ctx context.Context, auth *cliproxyauth.A
 			return resp, err
 		}
 	}
+	translated = applyMimoCompatibilityPayload(translated, opts.OriginalRequest, baseModel, opts.Stream, auth, e.Identifier())
+	translated = compressImageDataURLsInJSON(translated)
 
 	url := strings.TrimSuffix(baseURL, "/") + endpoint
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(translated))
@@ -217,6 +219,8 @@ func (e *OpenAICompatExecutor) ExecuteStream(ctx context.Context, auth *cliproxy
 			return nil, err
 		}
 	}
+	translated = applyMimoCompatibilityPayload(translated, opts.OriginalRequest, baseModel, true, auth, e.Identifier())
+	translated = compressImageDataURLsInJSON(translated)
 
 	url := strings.TrimSuffix(baseURL, "/") + "/chat/completions"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(translated))

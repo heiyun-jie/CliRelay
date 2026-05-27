@@ -45,6 +45,7 @@ type oaiToResponsesState struct {
 	TotalTokens      int64
 	ReasoningTokens  int64
 	UsageSeen        bool
+	FinishReason     string
 }
 
 // responseIDCounter provides a process-wide unique counter for synthesized response identifiers.
@@ -181,6 +182,7 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context, 
 		outputItemDone, _ = sjson.Set(outputItemDone, "sequence_number", nextSeq())
 		outputItemDone, _ = sjson.Set(outputItemDone, "item.id", st.ReasoningID)
 		outputItemDone, _ = sjson.Set(outputItemDone, "output_index", st.ReasoningIndex)
+		outputItemDone, _ = sjson.Set(outputItemDone, "item.encrypted_content", text)
 		outputItemDone, _ = sjson.Set(outputItemDone, "item.summary.text", text)
 		out = append(out, emitRespEvent("response.output_item.done", outputItemDone))
 
@@ -352,6 +354,7 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context, 
 			// finish_reason triggers finalization, including text done/content done/item done,
 			// reasoning done/part.done, function args done/item done, and completed
 			if fr := choice.Get("finish_reason"); fr.Exists() && fr.String() != "" {
+				st.FinishReason = fr.String()
 				// Emit message done events for all indices that started a message
 				if len(st.MsgItemAdded) > 0 {
 					// sort indices for deterministic order
@@ -449,6 +452,10 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context, 
 				completed, _ = sjson.Set(completed, "sequence_number", nextSeq())
 				completed, _ = sjson.Set(completed, "response.id", st.ResponseID)
 				completed, _ = sjson.Set(completed, "response.created_at", st.Created)
+				if st.FinishReason == "length" {
+					completed, _ = sjson.Set(completed, "response.status", "incomplete")
+					completed, _ = sjson.Set(completed, "response.incomplete_details.reason", "max_output_tokens")
+				}
 				// Inject original request fields into response as per docs/response.completed.json
 				if requestRawJSON != nil {
 					req := gjson.ParseBytes(requestRawJSON)
@@ -519,6 +526,7 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context, 
 					for _, r := range st.Reasonings {
 						item := `{"id":"","type":"reasoning","summary":[{"type":"summary_text","text":""}]}`
 						item, _ = sjson.Set(item, "id", r.ReasoningID)
+						item, _ = sjson.Set(item, "encrypted_content", r.ReasoningData)
 						item, _ = sjson.Set(item, "summary.0.text", r.ReasoningData)
 						outputsWrapper, _ = sjson.SetRaw(outputsWrapper, "arr.-1", item)
 					}
@@ -608,6 +616,10 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponsesNonStream(_ context.Co
 
 	// Basic response scaffold
 	resp := `{"id":"","object":"response","created_at":0,"status":"completed","background":false,"error":null,"incomplete_details":null}`
+	if root.Get("choices.0.finish_reason").String() == "length" {
+		resp, _ = sjson.Set(resp, "status", "incomplete")
+		resp, _ = sjson.Set(resp, "incomplete_details.reason", "max_output_tokens")
+	}
 
 	// id: use provider id if present, otherwise synthesize
 	id := root.Get("id").String()
@@ -715,6 +727,7 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponsesNonStream(_ context.Co
 		reasoningItem := `{"id":"","type":"reasoning","encrypted_content":"","summary":[]}`
 		reasoningItem, _ = sjson.Set(reasoningItem, "id", fmt.Sprintf("rs_%s", rid))
 		if rcText != "" {
+			reasoningItem, _ = sjson.Set(reasoningItem, "encrypted_content", rcText)
 			reasoningItem, _ = sjson.Set(reasoningItem, "summary.0.type", "summary_text")
 			reasoningItem, _ = sjson.Set(reasoningItem, "summary.0.text", rcText)
 		}

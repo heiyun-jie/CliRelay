@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/api/bodyutil"
 )
 
 func TestReadJSONRequestBodyReturnsTooLargeError(t *testing.T) {
@@ -16,7 +17,7 @@ func TestReadJSONRequestBodyReturnsTooLargeError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	oversized := bytes.Repeat([]byte("a"), (16<<20)+1)
+	oversized := bytes.Repeat([]byte("a"), int(bodyutil.DefaultRequestBodyLimit)+1)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(oversized))
 	req.Header.Set("Content-Type", "application/json")
 	c.Request = req
