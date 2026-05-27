@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,6 +12,9 @@ import (
 func PrepareStreamingResponse(c *gin.Context) {
 	if c == nil {
 		return
+	}
+	if c.Writer != nil {
+		_ = http.NewResponseController(c.Writer).SetWriteDeadline(time.Time{})
 	}
 	c.Status(http.StatusOK)
 	c.Header("Content-Type", "text/event-stream")
