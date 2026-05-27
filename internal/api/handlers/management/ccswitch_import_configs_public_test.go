@@ -121,4 +121,3 @@ func TestPublicCcSwitchImportConfigsReturnsEmptyWhenKeyUnknown(t *testing.T) {
 		t.Fatalf("items len = %d, want 0", len(got.Items))
 	}
 }
-

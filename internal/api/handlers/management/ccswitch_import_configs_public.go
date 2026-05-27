@@ -182,4 +182,3 @@ func (h *Handler) GetPublicCcSwitchImportConfigs(c *gin.Context) {
 		"found":                   true,
 	})
 }
-
