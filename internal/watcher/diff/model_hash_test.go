@@ -46,6 +46,25 @@ func TestComputeOpenAICompatModelsHash_NormalizesAndDedups(t *testing.T) {
 	}
 }
 
+func TestComputeOpenAICompatModelsHash_IncludesModelMetadata(t *testing.T) {
+	base := ComputeOpenAICompatModelsHash([]config.OpenAICompatibilityModel{
+		{Name: "mimo-v2.5-pro", Alias: "MiMo-V2.5-Pro", Priority: 7, TestModel: "gpt-5.4"},
+	})
+	if base == "" {
+		t.Fatal("expected non-empty hash")
+	}
+	if got := ComputeOpenAICompatModelsHash([]config.OpenAICompatibilityModel{
+		{Name: "mimo-v2.5-pro", Alias: "MiMo-V2.5-Pro", Priority: 7, TestModel: "gpt-5.5"},
+	}); got == base {
+		t.Fatal("hash should change when test model changes")
+	}
+	if got := ComputeOpenAICompatModelsHash([]config.OpenAICompatibilityModel{
+		{Name: "mimo-v2.5-pro", Alias: "MiMo-V2.5-Pro", Priority: 8, TestModel: "gpt-5.4"},
+	}); got == base {
+		t.Fatal("hash should change when model priority changes")
+	}
+}
+
 func TestComputeVertexCompatModelsHash_DifferentInputs(t *testing.T) {
 	models := []config.VertexCompatModel{{Name: "gemini-pro", Alias: "pro"}}
 	hash1 := ComputeVertexCompatModelsHash(models)

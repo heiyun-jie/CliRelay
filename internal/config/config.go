@@ -660,6 +660,9 @@ type OpenAICompatibility struct {
 	// Higher values are preferred; defaults to 0.
 	Priority int `yaml:"priority,omitempty" json:"priority,omitempty"`
 
+	// TestModel stores the default model used by the management UI connectivity test.
+	TestModel string `yaml:"test-model,omitempty" json:"test-model,omitempty"`
+
 	// Prefix optionally namespaces model aliases for this provider (e.g., "teamA/kimi-k2").
 	Prefix string `yaml:"prefix,omitempty" json:"prefix,omitempty"`
 
@@ -699,6 +702,12 @@ type OpenAICompatibilityModel struct {
 
 	// Alias is the model name alias that clients will use to reference this model.
 	Alias string `yaml:"alias" json:"alias"`
+
+	// Priority stores optional model-level selection metadata from the management UI.
+	Priority int `yaml:"priority,omitempty" json:"priority,omitempty"`
+
+	// TestModel stores the model ID used by the management UI when testing this row.
+	TestModel string `yaml:"test-model,omitempty" json:"test-model,omitempty"`
 }
 
 func (m OpenAICompatibilityModel) GetName() string  { return m.Name }
@@ -1081,7 +1090,13 @@ func (cfg *Config) SanitizeOpenAICompatibility() {
 		e.Name = strings.TrimSpace(e.Name)
 		e.Prefix = normalizeModelPrefix(e.Prefix)
 		e.BaseURL = strings.TrimSpace(e.BaseURL)
+		e.TestModel = strings.TrimSpace(e.TestModel)
 		e.Headers = NormalizeHeaders(e.Headers)
+		for j := range e.Models {
+			e.Models[j].Name = strings.TrimSpace(e.Models[j].Name)
+			e.Models[j].Alias = strings.TrimSpace(e.Models[j].Alias)
+			e.Models[j].TestModel = strings.TrimSpace(e.Models[j].TestModel)
+		}
 		for j := range e.APIKeyEntries {
 			e.APIKeyEntries[j].ProxyURL = strings.TrimSpace(e.APIKeyEntries[j].ProxyURL)
 			e.APIKeyEntries[j].ProxyID = strings.TrimSpace(e.APIKeyEntries[j].ProxyID)

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
@@ -69,11 +70,16 @@ func describeOpenAICompatibilityUpdate(oldEntry, newEntry config.OpenAICompatibi
 	if oldEntry.Disabled != newEntry.Disabled {
 		details = append(details, fmt.Sprintf("disabled %t -> %t", oldEntry.Disabled, newEntry.Disabled))
 	}
+	if strings.TrimSpace(oldEntry.TestModel) != strings.TrimSpace(newEntry.TestModel) {
+		details = append(details, "test-model updated")
+	}
 	if oldKeyCount != newKeyCount {
 		details = append(details, fmt.Sprintf("api-keys %d -> %d", oldKeyCount, newKeyCount))
 	}
 	if oldModelCount != newModelCount {
 		details = append(details, fmt.Sprintf("models %d -> %d", oldModelCount, newModelCount))
+	} else if openAICompatModelsSignature(oldEntry.Models) != openAICompatModelsSignature(newEntry.Models) {
+		details = append(details, "models updated")
 	}
 	if !equalStringMap(oldEntry.Headers, newEntry.Headers) {
 		details = append(details, "headers updated")
@@ -148,19 +154,12 @@ func openAICompatSignature(entry config.OpenAICompatibility) string {
 	if entry.Disabled {
 		parts = append(parts, "disabled=true")
 	}
-
-	models := make([]string, 0, len(entry.Models))
-	for _, model := range entry.Models {
-		name := strings.TrimSpace(model.Name)
-		alias := strings.TrimSpace(model.Alias)
-		if name == "" && alias == "" {
-			continue
-		}
-		models = append(models, strings.ToLower(name)+"|"+strings.ToLower(alias))
+	if v := strings.TrimSpace(entry.TestModel); v != "" {
+		parts = append(parts, "test_model="+strings.ToLower(v))
 	}
-	if len(models) > 0 {
-		sort.Strings(models)
-		parts = append(parts, "models="+strings.Join(models, ","))
+
+	if models := openAICompatModelsSignature(entry.Models); models != "" {
+		parts = append(parts, "models="+models)
 	}
 
 	if len(entry.Headers) > 0 {
@@ -186,4 +185,29 @@ func openAICompatSignature(entry config.OpenAICompatibility) string {
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "|")))
 	return hex.EncodeToString(sum[:])
+}
+
+func openAICompatModelsSignature(models []config.OpenAICompatibilityModel) string {
+	if len(models) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(models))
+	for _, model := range models {
+		name := strings.TrimSpace(model.Name)
+		alias := strings.TrimSpace(model.Alias)
+		if name == "" && alias == "" {
+			continue
+		}
+		priority := ""
+		if model.Priority != 0 {
+			priority = strconv.Itoa(model.Priority)
+		}
+		testModel := strings.TrimSpace(model.TestModel)
+		parts = append(parts, strings.ToLower(name)+"|"+strings.ToLower(alias)+"|"+priority+"|"+strings.ToLower(testModel))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
 }

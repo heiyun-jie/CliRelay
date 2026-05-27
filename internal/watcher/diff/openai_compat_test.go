@@ -91,6 +91,32 @@ func TestDiffOpenAICompatibility_DisabledFlagChange(t *testing.T) {
 	expectContains(t, changes, "provider updated: provider-a (disabled false -> true)")
 }
 
+func TestDiffOpenAICompatibility_ModelMetadataChanged(t *testing.T) {
+	oldList := []config.OpenAICompatibility{
+		{
+			Name:      "provider-a",
+			BaseURL:   "https://example.com/v1",
+			TestModel: "gpt-5.4",
+			Models: []config.OpenAICompatibilityModel{
+				{Name: "m1", Alias: "a1", Priority: 1, TestModel: "gpt-5.4"},
+			},
+		},
+	}
+	newList := []config.OpenAICompatibility{
+		{
+			Name:      "provider-a",
+			BaseURL:   "https://example.com/v1",
+			TestModel: "gpt-5.5",
+			Models: []config.OpenAICompatibilityModel{
+				{Name: "m1", Alias: "a1", Priority: 2, TestModel: "gpt-5.5"},
+			},
+		},
+	}
+
+	changes := DiffOpenAICompatibility(oldList, newList)
+	expectContains(t, changes, "provider updated: provider-a (test-model updated, models updated)")
+}
+
 func TestOpenAICompatKeyFallbacks(t *testing.T) {
 	entry := config.OpenAICompatibility{
 		BaseURL: "http://base",
